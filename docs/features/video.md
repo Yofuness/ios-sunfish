@@ -89,6 +89,18 @@ Switches: VENUSCTL_PRIMARY=1 (linear NV12 on OUTPUT), VENUSCTL_DPB_SETBUF=1, VEN
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
 
+### 2026-11-13 00:50 Why 0131 cost ~65 ms per frame (read-only analysis of boot 20261103-190010)
+Observed: ONE conversion per backboardd submit ("ycbcr converted" 58-69 vs 68-72 submits per 5 s); per conversion one
+global full barrier + bind + one dispatch, same 8x8 / 120x68 shape and fetch pattern as readbench (0131 fast.rs);
+the RGBA16F image is made once per decoder surface (~20-25 live, 16.6 MB each, no per-frame clear/transition).
+But shadow copies run at 2.0x conversions (118/58 ... 131/63 per 5 s) vs 0-5 per 5 s on the CPU path: one more
+copy-in per frame, uncounted (non-plain use -> seed_forget(); guess: a second conversion or a WebKit BGR10XR layer).
+Leading suspect (medium, guess): the consumer, not the conversion: CA samples the format-500 slot through the bridge's
+emulated exact linear filter (lower/sampler/linear.rs:142-150, PackedTexels::YCbCr2048: 4 RGBA16F taps + integer math
+per fragment), because only MetalSampler devices get the hardware filter. The CPU path's composite already costs
+~16.5 ms per frame. The in-place port would inherit this, so: fix 0131 first. Next: traced run (MESA_GPU_TRACES,
+SWEET_PIPESTATS) legs A GPU path / B CPU path, after soak n10; patch 0134 SWEET_YCBCR_HWFILTER being written.
+
 ### 2026-11-13 00:30 S0b readbench: imported surface memory is NOT slow (GO); 0131's 64-72 ms is elsewhere
 m2vtest readbench 50 (9d50edf) on t167y, kernel167, idle, GPU 649 MHz, two runs (medians agree within 0.02 ms). 3.1 MB
 1080p NV12, GPU ms median: IOSurface import / anonymous-page import / pool Shared: copy 0.52 / 0.52 / 0.52; NV12 ->
