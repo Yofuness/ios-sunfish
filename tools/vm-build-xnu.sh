@@ -8,7 +8,7 @@
 # dSYM and CTF are skipped by default (BUILD_DSYM=0 DO_CTFMERGE=0 on the kernel make line; saves ~14 s); --full
 # builds them as CI does. The VM is left running: back-to-back builds reuse it, pass --stop (or run
 # ~/VMs/macos/vm-stop.sh) at the end of a session.
-# Env (defaults = the iOS 16 build in the Sonoma VM): VM_DIR=~/VMs/macos, MACOS_VERSION=13.5 (dxb's xnu release),
+# Env (defaults = the iOS 16 build in the Sonoma VM): VM_DIR=~/VMs/macos, MACHINE_CONFIG=SWEET, MACOS_VERSION=13.5 (dxb's xnu release),
 # XC=/Applications/Xcode_15.0.1.app, PATCH_DIR=xnu/patches (relative to port/), KDK_MODE=kdk (build.sh's own KDK
 # handling) or fake (no KDK: an empty ~/xnubuild/no-kdk as KDKROOT, after Bergamota's use_kdk=false). Second VM
 # (macos15, xnu-12377): VM_DIR=~/VMs/macos15 MACOS_VERSION=26.5 XC=/Applications/Xcode_26.1.app
@@ -44,12 +44,12 @@ fi
 vs 'rm -rf ~/xnubuild/patches-in && mkdir -p ~/xnubuild/patches-in' </dev/null
 tar -C "$PATCH_DIR" -cf - . | vs 'tar -C ~/xnubuild/patches-in -xf -'
 
-vs "CLEAN=$CLEAN FULL=$FULL JOBS='$JOBS' MACOS_VERSION='$MACOS_VERSION' XC='$XC' KDK_MODE='$KDK_MODE' /usr/local/bin/bash -s" <<'REMOTE' || FAIL=1
+vs "CLEAN=$CLEAN FULL=$FULL JOBS='$JOBS' MACOS_VERSION='$MACOS_VERSION' MACHINE_CONFIG='${MACHINE_CONFIG:-SWEET}' XC='$XC' KDK_MODE='$KDK_MODE' /usr/local/bin/bash -s" <<'REMOTE' || FAIL=1
 set -euo pipefail
 export PATH=/usr/local/bin:$PATH
 DXB_REPO=https://github.com/blacktop/darwin-xnu-build
 DXB_SHA=663906528d1cd5ea8fde7de6f16de73db9511549
-export MACOS_VERSION KERNEL_CONFIG=DEVELOPMENT MACHINE_CONFIG=SWEET MAKEFLAGS=-k
+export MACOS_VERSION KERNEL_CONFIG=DEVELOPMENT MACHINE_CONFIG=${MACHINE_CONFIG:-SWEET} MAKEFLAGS=-k
 export -n XC KDK_MODE   # came in through ssh's env prefix: keep them out of build.sh's environment, as before
 export DEVELOPER_DIR=$XC/Contents/Developer
 [ "$(xcode-select -p)" = "$DEVELOPER_DIR" ] || sudo xcode-select -s "$XC"

@@ -28,8 +28,24 @@ Intel), and Xcode 15.0.1 from developer.apple.com (needs an Apple ID) into `/App
 
 ## Second VM (macos15)
 
-For xnu-12377.121.6 (iOS 26/27): macOS Sequoia 15.7 + Xcode 26.1 in `~/VMs/macos15`, set up as above (symlink these
-scripts into it; its own disk, `OVMF_VARS.fd`, key, `credentials`, `qemu.pid`). Every script takes the VM from
+For xnu-12377.121.6 (iOS 26/27): macOS Sequoia 15.8.3 (24H241) + Xcode 26.1 (17B55) in `~/VMs/macos15`, set up as
+above (symlink these scripts into it; its own disk, `OVMF_VARS.fd`, key, `credentials`, `qemu.pid`).
+
+Setup (2026-11-13, about 1.5 h): /usr/local (bin, include, lib, share) and `/Applications/CMake.app` tarred out of the
+Sonoma VM (`usr-local.tgz`, `cmake-app.tgz` in `~/VMs/macos15`); new `credentials` and `id_ed25519`;
+`VM_DIR=~/VMs/macos15 VM_INSTALL_IMG=~/VMs/macos15/recovery/BaseSystem.img mac-vm.sh install` run detached, VNC
+password set over `mon.sock`. OpenCore shows 1280x800, so a `vmctl.py shot` pixel (960 wide) is clicked at x2. Picker:
+macOS Base System; Recovery up after ~4 min; Terminal `diskutil eraseDisk APFS 'Macintosh HD' GPT disk0` (the empty
+137.4 GB disk; the recovery image was disk2); Reinstall macOS Sequoia: 54 min including download and two reboots,
+which OpenCore picked by itself. Setup assistant ~10 min: account `builder`, no Apple Account, no location or
+analytics, Screen Time later, updates "Only Download Automatically" (then all SoftwareUpdate keys false; `softwareupdate
+--schedule off` has no effect without Full Disk Access). "X differs from previously opened versions" dialogs
+(Contacts, TipsWidgetExtension) show up at setup and at login: Don't Open. In the GUI Terminal: sudoers.d/builder NOPASSWD,
+`launchctl load -w /System/Library/LaunchDaemons/ssh.plist`, the pubkey; then over SSH /etc/kcpassword (made on the
+host) + autoLoginUser, pmset 0, `mdutil -a -i off`, time zone America/Toronto. Xcode: scp of the xip 23 s, `xip -x`
+340 s, `-runFirstLaunch` 97 s; 4.6 GB, the iOS 26.1 SDK is included (arm64/arm64e compile OK), no platform download.
+The tarballs unpacked into /usr/local and /Applications; /usr/local/bin is not on PATH in non-login SSH shells
+(same as Sonoma). Cold boot to SSH 40 s; hibernate 14-16 s (4.2 GB state.zst); resume 17 s. Disk: qcow2 35 GB. Every script takes the VM from
 `VM_DIR` (or `MACOS_VM_DIR`; default `~/VMs/macos`). Both VMs use the same SSH port 2222, VNC :1, host cores 4-11 and
 8 GB, so only one may run: `vm-start.sh`, `mac-vm.sh` and `vm-build-xnu.sh` stop with a message when another VM's
 `qemu.pid` is live (stop it with `VM_DIR=~/VMs/macos tools/macos-vm/vm-stop.sh`).

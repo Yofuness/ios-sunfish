@@ -25,7 +25,7 @@ bootable until iOS 26/27 is daily-usable (every boot is RAM-only; never flash).
    bluetooth.md State fixed). AirPods session: when the user says they're home (U-AP1 closed). ▶ Now: phone <-> laptop
    ("glizzy") pairing test with btsnoop on; flag /var/local/btbridge.snoop off afterwards.
 1. ▶ **Build host** (1-1.5 d): scripts DONE (9854602, kernel167 byte-identical); parameterise tools/vm-build-xnu.sh + tools/macos-vm/* (VM_DIR, MACOS_VERSION, XC, PATCH_DIR,
-   KDK_MODE=fake), guard against a second live VM; then a second VM `~/VMs/macos15` (Sequoia 15.7 + Xcode 26.1, 40-50 GB).
+   KDK_MODE=fake), guard against a second live VM; then a second VM `~/VMs/macos15` (DONE 2026-11-13: Sequoia 15.8.3 24H241 + Xcode 26.1 17B55 + iOS 26.1 SDK, 42 GB).
    Xcode 26.1 is on disk: ../restore/xcode/Xcode_26.1_Universal.xip (the user, 2026-11-13 06:55). **Gate B:** stock
    xnu-12377.121.6 DEVELOPMENT links (VMAPPLE smoke test, then SWEET).
 2. **Donor census**: **Gate A PASSED both** (2026-11-13 08:45, research/notes/donor-census-2026-11-13.md). Root 27.2.1 if the
@@ -50,7 +50,7 @@ when 27's census is clean. xnu-13 source appearing changes nothing before Gate E
 ## Next (in this order; a fresh /loop session starts here)
 1. Stage 0 btsnoop (implementer for btbridge, builder, one phone-runner boot). 2. Stage 2 census in parallel (one
 investigator; both IPSWs are on disk, sha1 verified; extracted files under ../restore/ipsw/x/, out of git).
-3. Stage 1: VM script parameterisation, then the Sequoia 15.7 VM with Xcode 26.1 (on disk).
+3. Stage 1: Gate B in ~/VMs/macos15 (VMAPPLE stock smoke, then SWEET with xnu/patches-12377).
 4. Done 2026-11-13 07:20: gpu15e: 4 video tabs no longer crash; SWEET_YCBCR_GPU=1 default again (video.md). iOS 16 parked.
 
 ## Phone
