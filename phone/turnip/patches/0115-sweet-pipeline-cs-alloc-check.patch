@@ -1,0 +1,53 @@
+diff --git a/src/freedreno/vulkan/tu_pipeline.cc b/src/freedreno/vulkan/tu_pipeline.cc
+index fbd7aec..8ee728c 100644
+--- a/src/freedreno/vulkan/tu_pipeline.cc
++++ b/src/freedreno/vulkan/tu_pipeline.cc
+@@ -1493,6 +1493,19 @@ tu_pipeline_allocate_cs(struct tu_device *dev,
+     * can't use its EXTERNALLY_SYNCHRONIZED flag to avoid atomics because
+     * pipeline destroy isn't synchronized by the cache.
+     */
++   /* SweetMetal2 0115 test knob: SWEET_PIPE_FAIL_TEST=N refuses every Nth
++    * pipeline cs suballocation, as if the kernel had refused the BO. 0 = off.
++    */
++   static int64_t sweet_pipe_fail_every = -1;
++   static uint32_t sweet_pipe_fail_count;
++   if (sweet_pipe_fail_every < 0)
++      sweet_pipe_fail_every = debug_get_num_option("SWEET_PIPE_FAIL_TEST", 0);
++   if (sweet_pipe_fail_every > 0 &&
++       p_atomic_inc_return(&sweet_pipe_fail_count) % sweet_pipe_fail_every == 0) {
++      mesa_loge("sweet 0115: pipeline cs suballoc refused (forced)");
++      return VK_ERROR_OUT_OF_DEVICE_MEMORY;
++   }
++
+    mtx_lock(&dev->pipeline_mutex);
+    VkResult result = tu_suballoc_bo_alloc(&pipeline->bo, &dev->pipeline_suballoc,
+                                           size * 4, 128);
+@@ -4579,16 +4592,22 @@ tu_pipeline_builder_build(struct tu_pipeline_builder *builder,
+ 
+    result = tu_pipeline_allocate_cs(builder->device, *pipeline,
+                                     &builder->layout, builder, NULL);
+-
++   /* SweetMetal2 0115: checked for every pipeline, not only PRE_RAST|FS ones:
++    * a GPL library (VertexInput, FragmentOutput, ...) went on with a zeroed
++    * pipeline->cs (device NULL) into tu_pipeline_builder_emit_state and
++    * crashed (WebKit.GPU far 0x1b20). tu_pipeline_finish is safe on the
++    * zeroed cs and bo, and drops the shader references as on a compile failure.
++    */
++   if (result != VK_SUCCESS) {
++      mesa_loge("sweet 0115: pipeline cs allocation failed (%d)", result);
++      tu_pipeline_finish(*pipeline, builder->device, builder->alloc);
++      vk_object_free(&builder->device->vk, builder->alloc, *pipeline);
++      return result;
++   }
+ 
+    if (set_combined_state(builder, *pipeline,
+                           VK_GRAPHICS_PIPELINE_LIBRARY_PRE_RASTERIZATION_SHADERS_BIT_EXT |
+                           VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_SHADER_BIT_EXT)) {
+-      if (result != VK_SUCCESS) {
+-         vk_object_free(&builder->device->vk, builder->alloc, *pipeline);
+-         return result;
+-      }
+-
+       tu_emit_program_state<CHIP>(&(*pipeline)->cs, &(*pipeline)->program,
+                                   (*pipeline)->shaders);
+ 
