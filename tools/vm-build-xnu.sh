@@ -12,7 +12,8 @@
 # XC=/Applications/Xcode_15.0.1.app, PATCH_DIR=xnu/patches (relative to port/), KDK_MODE=kdk (build.sh's own KDK
 # handling) or fake (no KDK: an empty ~/xnubuild/no-kdk as KDKROOT, after Bergamota's use_kdk=false). Second VM
 # (macos15, xnu-12377): VM_DIR=~/VMs/macos15 MACOS_VERSION=26.5 XC=/Applications/Xcode_26.1.app
-# PATCH_DIR=xnu/patches-12377 KDK_MODE=fake tools/vm-build-xnu.sh NN. Only one VM may run (tools/macos-vm/vm-guard.sh).
+# PATCH_DIR=xnu/patches-12377 KDK_MODE=fake tools/vm-build-xnu.sh NN. 26.x builds as IOS-26-Hot's CI does (dxb bd88697,
+# its build.sh edits and patch loop; see the REMOTE part). Only one VM may run (tools/macos-vm/vm-guard.sh).
 # Usage: tools/vm-build-xnu.sh NN [--clean] [--full] [--stop]   -> work/kernelNN/ (same layout as gh run download -n xnu-kernel)
 set -euo pipefail
 NN=${1:?usage: $0 NN [--clean] [--full] [--stop]}; shift
@@ -49,6 +50,11 @@ set -euo pipefail
 export PATH=/usr/local/bin:$PATH
 DXB_REPO=https://github.com/blacktop/darwin-xnu-build
 DXB_SHA=663906528d1cd5ea8fde7de6f16de73db9511549
+# 26.x (xnu-12377, patches-12377): build exactly as IOS-26-Hot's CI (research/upstream/IOS-26-Hot/.github/workflows/xnu.yml):
+# its dxb pin (yml l.31). dxb 6639065's widened INCFLAGS_SDK sed in patches() rewrites MakeInc.def's line 1227 (four
+# spaces; bd88697's sed wants a tab and leaves it alone), so Hot's 0004 hunk there no longer applies.
+HOT=0
+case $MACOS_VERSION in 26.*) HOT=1; DXB_SHA=bd88697145b2d8008bbed951fef99795308262f0 ;; esac
 export MACOS_VERSION KERNEL_CONFIG=DEVELOPMENT MACHINE_CONFIG=${MACHINE_CONFIG:-SWEET} MAKEFLAGS=-k
 export -n XC KDK_MODE   # came in through ssh's env prefix: keep them out of build.sh's environment, as before
 export DEVELOPER_DIR=$XC/Contents/Developer
@@ -61,6 +67,8 @@ stamp() { echo "VMSTAMP $1 $(date +%s)" >> "$LOG"; }
 stamp start
 INC=0
 [ "$CLEAN" = 0 ] && [ -f dxb/.vm-ok ] && INC=1
+# a kept dxb from the other pin is refetched (only differs when switching between 26.x and 13.5/15.x builds)
+[ $INC = 1 ] && [ "$(git -C dxb rev-parse HEAD 2>/dev/null)" != "$DXB_SHA" ] && INC=0
 if [ $INC = 0 ]; then
   rm -rf dxb; git init -q dxb
   git -C dxb fetch -q --depth 1 "$DXB_REPO" "$DXB_SHA"
@@ -69,7 +77,7 @@ fi
 cd dxb
 rm -f .vm-ok
 # (name, hash) of every patch/script, scripts first; compared with the last good build's list
-NEWSUMS=$( (cd ~/xnubuild/patches-in && { ls *.sh 2>/dev/null; ls *.patch; } | while read -r f; do echo "$f $(shasum -a 256 "$f" | cut -c1-64)"; done) )
+NEWSUMS=$( (cd ~/xnubuild/patches-in && { ls *.sh 2>/dev/null || true; ls *.patch 2>/dev/null || true; } | while read -r f; do echo "$f $(shasum -a 256 "$f" | cut -c1-64)"; done) )
 OLDSUMS=$(cat .vm-patchsums 2>/dev/null || true); rm -f .vm-patchsums
 MODE=full
 if [ $INC = 1 ] && [ -n "$OLDSUMS" ]; then
@@ -84,9 +92,16 @@ case $MACOS_VERSION in
   15.*) PSUB=patches/15.0; PPRE=sweet- ;;
   *) PSUB=patches; PPRE= ;;
 esac
-if [ -z "$PPRE" ]; then cp ~/xnubuild/patches-in/*.patch ~/xnubuild/patches-in/*.sh patches/
+if [ $HOT = 1 ]; then :   # 26.x: dxb's patches/26.0 stays pristine; build.sh runs ours from patches-in (edit below)
+elif [ -z "$PPRE" ]; then cp ~/xnubuild/patches-in/*.patch ~/xnubuild/patches-in/*.sh patches/
 else for f in ~/xnubuild/patches-in/*.patch ~/xnubuild/patches-in/*.sh; do [ -e "$f" ] || continue; cp "$f" "$PSUB/$PPRE$(basename "$f")"; done; fi
-if [ "$KDK_MODE" = fake ]; then
+if [ "$KDK_MODE" = fake ] && [ $HOT = 1 ]; then
+  # Hot's fake-kdk (yml l.110-112): our CoreEntitlements stage script fills an empty KDKROOT with the V2 headers;
+  # dxb's own 00_setup_coreentitlements.sh stays and copies them from there (as in Hot's CI).
+  CE=$(ls ~/xnubuild/patches-in/*.sh 2>/dev/null | grep -i coreentitlements | head -1) || { echo "KDK_MODE=fake: no CoreEntitlements stage script (*coreentitlements*.sh) in PATCH_DIR" >&2; exit 1; }
+  rm -rf ~/xnubuild/fake-kdk; mkdir -p ~/xnubuild/fake-kdk; export KDKROOT=~/xnubuild/fake-kdk
+  (cd ~/xnubuild && bash "$CE")
+elif [ "$KDK_MODE" = fake ]; then
   # no KDK (Bergamota use_kdk=false; IOS-26-Hot's fake-kdk): SWEET links no closed KDK libs. Drop dxb's KDK header
   # copy (a CoreEntitlements V2 stage script in PATCH_DIR stands in) and point KDKROOT at an empty dir so build.sh
   # does not download a KDK.
@@ -94,10 +109,23 @@ if [ "$KDK_MODE" = fake ]; then
   rm -f "$PSUB/00_setup_coreentitlements.sh"
   mkdir -p ~/xnubuild/no-kdk; export KDKROOT=~/xnubuild/no-kdk
 fi
-# 15.x/26.x: our sweet-* patches must all apply (IOS-26-Hot's CI applies its series fail-fast); dxb's patches loop
-# skips any patch whose --check fails, which would hide a broken series. dxb's own patches may still be skipped
-# (link_kdk and remove_applefeatures_include do not apply on 12377). The Sonoma path is unchanged.
-if [ -n "$PPRE" ]; then
+# our sweet-* patches must all apply (IOS-26-Hot's CI applies its series fail-fast); dxb's patches loop skips any
+# patch whose --check fails, which would hide a broken series (dxb's own patches may still be skipped). 26.x: Hot's
+# own loop; 15.x: a check in dxb's loop. The Sonoma path is unchanged.
+if [ $HOT = 1 ]; then
+  # Hot's build.sh edits (yml l.55-92): 1. KDKROOT honours the environment (fake-kdk); 3. after dxb's conditional loop
+  # over patches/26.0 (bd88697 skips link_kdk, remove_applefeatures_include and its malformed disable_bti_vmapple and
+  # simplify_san_lipo, as in Hot's CI), run all our *.sh from the xnu root, then git apply all our *.patch. Edit 2
+  # (libfirehose ARCHS) is the common perl below. Fail-fast: an unapplied patch stops build.sh (errexit, plus an
+  # explicit exit so the eval'd repatch path stops too).
+  SPD=$HOME/xnubuild/patches-in perl -0777 -pi -e '
+    my $o = qq{        for PATCH in "\${PATCH_DIR}"/*.patch; do\n            if git apply --check "\$PATCH" 2> /dev/null; then\n                running "Applying patch: \${PATCH}"\n                git apply "\$PATCH"\n            fi\n        done};
+    my $n = $o . qq{\n        SWEET_PATCH_DIR="$ENV{SPD}"\n        for SCRIPT in "\${SWEET_PATCH_DIR}"/*.sh; do\n            running "Running sweet stage script: \${SCRIPT}"\n            bash "\${SCRIPT}"\n        done\n        for PATCH in "\${SWEET_PATCH_DIR}"/*.patch; do\n            running "Applying sweet patch: \${PATCH}"\n            git apply --verbose "\$PATCH" || { error "sweet patch does not apply: \${PATCH}"; exit 1; }\n        done};
+    my $i = index($_, $o); die "vm-build: dxb patch loop not found\n" if $i < 0;
+    substr($_, $i, length $o) = $n;
+    s{KDKROOT=\x27(/Library/Developer/KDKs/[^\x27]+)\x27}{KDKROOT="\${KDKROOT:-$1}"}g or die "vm-build: KDKROOT not found\n";' build.sh
+  grep -q 'sweet patch does not apply' build.sh
+elif [ -n "$PPRE" ]; then
   perl -pi -e 's/^(\s+)(warning "Skipping patch \$\{PATCH\})/$1case "\$(basename "\$PATCH")" in sweet-*) error "sweet patch does not apply: \$\{PATCH\}: \$\{APPLY_CHECK\}"; exit 1;; esac\n$1$2/' build.sh
   grep -q 'sweet patch does not apply' build.sh
 fi
@@ -137,6 +165,8 @@ fi
 echo "vm-build: patch path $MODE" | tee -a "$LOG"
 # no dSYM/CTF unless --full (command-line make vars beat MakeInc.def's :=)
 [ "$FULL" = 1 ] || perl -pi -e 's/("\$\{CTF_TOOL_OVERRIDES\[@\]\}") SDKROOT=macosx TARGET_CONFIGS/$1 BUILD_DSYM=0 DO_CTFMERGE=0 SDKROOT=macosx TARGET_CONFIGS/' build.sh
+# bd88697's make lines have no CTF_TOOL_OVERRIDES
+[ "$FULL" = 1 ] || [ $HOT = 0 ] || perl -pi -e 's/(make install -j\d+ VERBOSE=YES) SDKROOT=macosx TARGET_CONFIGS/$1 BUILD_DSYM=0 DO_CTFMERGE=0 SDKROOT=macosx TARGET_CONFIGS/' build.sh
 [ "$FULL" = 1 ] || grep -q 'BUILD_DSYM=0 DO_CTFMERGE=0' build.sh
 stamp patched
 if ! bash build.sh >> "$LOG" 2>&1; then
@@ -146,7 +176,7 @@ stamp built
 rm -rf ~/xnubuild/out && mkdir -p ~/xnubuild/out
 cp -R fakeroot/System/Library/Kernels/. ~/xnubuild/out/
 (cd ~/xnubuild/out && shasum -a 256 kernel.* > SHA256SUMS 2>/dev/null) || true  # kernel.*.link is a dir, as in CI
-ls ~/xnubuild/out/kernel.development.sweet >/dev/null
+ls ~/xnubuild/out/kernel.development.* >/dev/null
 printf '%s\n' "$NEWSUMS" > .vm-patchsums
 touch .vm-ok
 stamp done
