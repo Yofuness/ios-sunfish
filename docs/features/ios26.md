@@ -17,6 +17,15 @@ CPUs, UFS, HFS root mounted read-only, launchd exec'd (k301b); iOS 16's launchd 
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 13:15 k306a: same LDG with hardened_heap off: the MTE gate is elsewhere
+- kernel306 (1295). OBS (../logs/k306/k306a-rescue.txt): `sweet-nomte: security_config 0x20158 (task 0x20159) mask 1`; TCO
+  emulated once (strncmp MTE variant still chosen); `sweet-undef: pid 1 ... pc 0x198a34e90 word 0xd9600008 slide 0x184c8000`
+  = unslid 0x18056ce90, the same `_memtag_assign_tag_contiguous+4` LDG as k305a. So neither security_config bit 2 nor bit 0
+  is what turns MTE on in libsystem_platform/libsystem_malloc 27 (GUESS: a commpage/sysctl field whose meaning differs
+  between 12377 and 27).
+- iOS 16 without /var (sweetnofstab=1): SSH works, the panel stays on the Apple logo (no /var: expected).
+- Next, in parallel: a Fable investigator for the real gate; 1296 EL0 MTE emulation (tags = 0) as a fallback.
+
 ### 2026-11-13 13:00 k305a: TCO emulation works; launchd 27 then SIGILLs on LDG in libmalloc's hardened heap
 - kernel305 (1294). OBS (../logs/k305/k305a-rescue.txt): `sweet-nomte: security_config 0x20159 (task 0x20159) mask 1`
   (12377 layout: hardened_heap=1, tpro=0, reserved=0, platform_restrictions_version=3, script_restrictions=1,
