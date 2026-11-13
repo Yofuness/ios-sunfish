@@ -2,8 +2,8 @@
 
 **State:** 🟡 **iOS 27.2.1 userland runs** (k315a, 2026-11-13 17:00): kernel315 (xnu-12377 + xnu/patches-12377 through 1304)
 boots the PAC-rewritten 27.2.1 root on ufsroot1; launchd runs early boot and the system domain, 4850 execs / 353 programs in
-10 min incl. SpringBoard and backboardd, no panic; no picture yet (GPU off). Gate C1 passed; next C2 (SSH) and the
-AICMR_MATCH assert that kills ~7 daemons. **Updated:** 2026-11-13.
+10 min incl. SpringBoard and backboardd, no panic; no picture yet (GPU off). **Gate C passed** (C2: SSH into 27.2.1, 17:15);
+next: the AICMR_MATCH assert (~11 daemons), Bluetooth on 27, display (Gate D). **Updated:** 2026-11-13.
 
 ## Facts
 - Goal (the user, 2026-11-13): LibrePods development needs a current iOS host; target iOS 27, iOS 26 first if better.
@@ -18,6 +18,15 @@ AICMR_MATCH assert that kills ~7 daemons. **Updated:** 2026-11-13.
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 17:15 k316c2: GATE C2 PASSED: SSH into iOS 27.2.1 over USB-ECM
+- Tweaked C1 image (dropbear job, dash /bin/sh, toybox; tools/root27/tweaks27.py) written (fastboot -S 256M, 44 chunks, 115 s);
+  kernel315, same cmdline. OBS: ping 192.168.7.2 3/3 at 60 s; `uname -a`: "Darwin iPhone 25.5.0 Darwin Kernel Version 25.5.0
+  ... DEVELOPMENT_ARM64_SWEET iPhone10,3"; SystemVersion.plist: iPhone OS 27.2.1, 24B156; uid 0; df / 13G, 11G used.
+  ps: 204 lines at ~85 s, 141 at ~5 min: launchd logd runningboardd mediaremoted ... keybagd amfid softwareupdated nfcd
+  dropbear (pid 61) thermalmonitord ... lockdownd ... bluetoothd ... configd; SpringBoard + backboardd running at 5 min.
+  No panic. Crashes: familycircled 11, cryptexd 4, transparencyd/deviceconfigurationd/coreservicesd/analyticsd 3.
+- Gaps: no sysctl binary on the root (hw.optional unread), identity iPhone10,3 (ADT D22AP), no GUI (sweetgpu=0).
+
 ### 2026-11-13 17:10 SSH (dropbear) added to the 27.2.1 c1 root for Gate C2 (not booted yet)
 - New step `tweaks` in tools/mkiosroot27.sh (tools/root27/tweaks27.py, docs/root27.md): iOS 16's dropbear setup offline:
   dropbearmulti/dash/toybox from work/userland-linux/out into /var/local/bin (plain arm64, ad hoc; deps libSystem, toybox +
@@ -62,7 +71,7 @@ AICMR_MATCH assert that kills ~7 daemons. **Updated:** 2026-11-13.
 - The critical-exit panic fires before our crash printer: 1303 prints pc/backtrace + libsystem_c's crash message
   (_gCRAnnotations) for initproc before the panic.
 
-### 2026-11-13 16:45 k313a: fixed root written; launchd 27 runs early boot to the end (24 processes), then SIGABRT
+### 2026-11-13 16:25 k313a: fixed root written; launchd 27 runs early boot to the end (24 processes), then SIGABRT
 - Rewrite: `fastboot -S 256M flash userdata ../restore/root27/root27-c1-at16g.simg` (simg-hfs, sha256 b07d551d...), 44 chunks,
   118 s. Verify on iOS 16: 45 sampled chunks (incl. .25/.54/.77.dylddata) vs host hashes: 0 differ.
 - kernel313 (probes on), same cmdline + sweetprobe1/2. OBS (../logs/boots/20261113-161847.log, ../logs/k313/k313a-rescue.txt):

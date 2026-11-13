@@ -36,7 +36,7 @@ bootable until iOS 26/27 is daily-usable (every boot is RAM-only; never flash).
 3. **Kernel rebase** (7-12 d): base = IOS-26-Hot xnu/patches-26 (MIT, 116/116 clean on 12377; rebase map 2026-11-13) [was: Scion's layer], UniXNU's 8-syscall patch, our 0125-0285
    without 0160's vendored tree, PAC layer (zeta plain-auth + an EL0 emulator), GiaSen facts re-implemented (no licence:
    ideas only). New tree work/src/xnu-12377, patches xnu/patches-12377/. **Gate C:** RAM-booted kernel reaches serial
-   launchd (C1 PASSED 2026-11-13 13:55, kernel308), then SSH over USB-ECM, on a rewritten root in its own region; iOS 16 still boots.
+   launchd (C1 PASSED 2026-11-13 13:55, kernel308), then SSH over USB-ECM (C2 PASSED 17:15, kernel315), on a rewritten root in its own region; iOS 16 still boots.
 4. **Root pipeline** (2-4 d, inside 3): 27.2.1; fold the 3 prover fixes into a tools/ prover + full-cache run (0.5 d,
    needs > 8 GB: VM off); mkiosroot for the new IPSW + PAC rewrite incl. TEXT_STUBS (BRAA x16,x17), ad hoc
    signing / trust cache, N104 ADT (random-seed, CTRR props), HFSX >= 24 GB in its own userdata region (iOS 16 /var may go).
@@ -50,11 +50,16 @@ Switches: 27 -> 26.6.2 root if a 27 root stalls > 3 days before Gate D on an ABI
 when 27's census is clean. xnu-13 source appearing changes nothing before Gate E (the daily upstream check watches it).
 
 ## Next (in this order; a fresh /loop session starts here)
-1. Stage 0 btsnoop (implementer for btbridge, builder, one phone-runner boot). 2. Stage 2 census in parallel (one
-investigator; both IPSWs are on disk, sha1 verified; extracted files under ../restore/ipsw/x/, out of git).
-3. Gate C: kernel301 boots to launchd on the iOS 16 root (k301b). Now: kernel302 (ufsrootminor, commpage bits), 27.2.1
-   C1 root image (tools/mkiosroot27.sh, prover done: 33.56M edits, 97 unproven, MLIR_ML/WebCore OOM), then write + boot.
-4. Done 2026-11-13 07:20: gpu15e: 4 video tabs no longer crash; SWEET_YCBCR_GPU=1 default again (video.md). iOS 16 parked.
+Done 2026-11-13: stages 0-4, Gates A, B, C (C1 13:55, C2 17:15: SSH into iOS 27.2.1 on kernel315). Boot 27: write
+`fastboot -S 256M flash userdata ../restore/root27/root27-c1-at16g.simg` (tools/mkiosroot27.sh; never img2simg -s), then
+`SUNFISH_LLVM_NM=1 ADT=work/boot/sunfish-26.adt tools/sunfish-boot.sh TAG work/kernel315/kernel.development.sweet rd=ufsroot1
+ufsrw=1 rootrw=1 launchd_unsecure_cache=1 ignition_level=1 cs_integrity_skip=1 sweetfb_noconsole=0 -v sweetgpu=0 sweetmtl=0`.
+1. AICMR_MATCH assert (kills ~11 daemons incl. backboardd) and cryptexd's trap: investigator running -> kernel fix.
+2. Stage 6 early (bluetoothd already runs on 27): port 0226 (btbridge kctl) + 0231 to patches-12377, btbridge + BT env /
+   BlueTool stub in tools/root27/tweaks27.py; then the AirPods capture on 27 when the user is home.
+3. Stage 5 (Gate D): display (IOMFB/framebuffer path for SpringBoard), touch, then the GPU; identity N104 (uname shows
+   iPhone10,3); full root profile (PosterBoard, mediaanalysisd missing in C1).
+4. Cleanup: the debug patches 1293/1298/1299/1302/1303 stay (off switches); MTE emulation stays as a net.
 
 ## Phone
 Claude's (the user, away 2026-11-13). iOS 16 everyday boot: `tools/sunfish-test.sh -k 167 TAG sweetse9=2 sweetcampmic=2
