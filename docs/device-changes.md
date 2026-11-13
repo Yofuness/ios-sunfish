@@ -212,3 +212,4 @@ output in /var/local.
 - 2026-11-13 17:32 PLANNED: rewrite ufsroot1 (userdata) with ../restore/root27/root27-c1-at16g.simg (11,510,015,516 B; SSH+BT+Wi-Fi root) via fastboot -S 256M flash userdata; user approved overwrite 10:55.
 - 2026-11-13 17:34 DONE: ufsroot1 rewrite with root27-c1-at16g.simg (BT+Wi-Fi), fastboot -S 256M, 121 s, 44 chunks OKAY.
 - 2026-11-13 17:35 k316a RAM boot (kernel316, root27-c1-at16g BT+Wi-Fi root on ufsroot1, rd=ufsroot1 ufsrw=1 rootrw=1); the root booted writes /var/local logs and /var on ufsroot1 only. iOS 16 back via k167nofstab18 17:40. Reproduce: tools/sunfish-boot.sh k316a (see plan).
+- 2026-11-13 17:44-17:50 k317a/k317b boots (RAM kernel317, rd=ufsroot1 rw) wrote to ufsroot1 (iOS 27 root); created /var/local/btbridge.snoop (touch; ran on the 27 root) so btbridge writes /var/local/bt/btsnoop-*.log; reproduce: ssh, touch /var/local/btbridge.snoop, reboot.

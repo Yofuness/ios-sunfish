@@ -23,6 +23,16 @@
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
 
+### 2026-11-13 18:00 k317a/b: bluetoothd on iOS 27 stays up and completes HCI init (kernel317, 1306)
+- kernel317 (1306: PRIV_GLOBAL_PROC_INFO for platform binaries). OBS: 0 "privilege 1002" lines; k317b: bluetoothd exec'd once,
+  alive at 3 min, "SWEET BTBR: kernel control connected by bluetoothd (unit 1)", termios 115200, no disconnect (k317a still
+  restarted 4x before the snoop flag reboot). btsnoop (../logs/k317/k317b-btsnoop.log, out of git): 132 records, 66
+  commands, all Command Complete status 0, no ACL: Reset, Read Local Version/Commands/BD ADDR/Features, event masks, SSP,
+  LE host, buffer sizes, PHY, data length, flow control, Secure Connections, link policy, scan/page settings, Change Local
+  Name, EIR, Class of Device, vendor FCE2/FCE9/FD48/FD47/FD1B/FD4E (FCE2/FCE9/FD4E answered by btbridge), LE Set Random
+  Address. No scan enable: Bluetooth stays "off" without a client (no UI). No `log` binary on the 27 root.
+- Next: a CLI (BluetoothManager private framework: power on, scan, pair, connect) for the AirPods test without UI.
+
 ### 2026-11-13 17:50 iOS 27.2.1 (k316a): chip up via btbridge, bluetoothd connects to the kctl, then restarts
 - Same btbridge + bluetool-stub as iOS 16, on the 27 root (tools/root27/tweaks27.py). btbridge: firmware + NVM loaded, HCI
   reset OK, bd_addr 39:90:21:74:07:00; bluetoothd connects ("unit 1"), sends HCI init, privilege 1002 denied, exits and

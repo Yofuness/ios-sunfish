@@ -18,6 +18,16 @@ next: the AICMR_MATCH assert (~11 daemons), Bluetooth on 27, display (Gate D). *
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 18:00 k317a/b: bluetoothd on iOS 27 stays up and completes HCI init (kernel317, 1306)
+- kernel317 (1306: PRIV_GLOBAL_PROC_INFO for platform binaries). OBS: 0 "privilege 1002" lines; k317b: bluetoothd exec'd once,
+  alive at 3 min, "SWEET BTBR: kernel control connected by bluetoothd (unit 1)", termios 115200, no disconnect (k317a still
+  restarted 4x before the snoop flag reboot). btsnoop (../logs/k317/k317b-btsnoop.log, out of git): 132 records, 66
+  commands, all Command Complete status 0, no ACL: Reset, Read Local Version/Commands/BD ADDR/Features, event masks, SSP,
+  LE host, buffer sizes, PHY, data length, flow control, Secure Connections, link policy, scan/page settings, Change Local
+  Name, EIR, Class of Device, vendor FCE2/FCE9/FD48/FD47/FD1B/FD4E (FCE2/FCE9/FD4E answered by btbridge), LE Set Random
+  Address. No scan enable: Bluetooth stays "off" without a client (no UI). No `log` binary on the 27 root.
+- Next: a CLI (BluetoothManager private framework: power on, scan, pair, connect) for the AirPods test without UI.
+
 ### 2026-11-13 17:50 k316a: AICMR gone; Wi-Fi modem + BT chip up on iOS 27; bluetoothd connects, then restarts
 - Root with ssh+bt+wifi tweaks written (44 chunks, 121 s); kernel316 (1226 BT kctl, 1231 Skywalk pipe, 1305 AMFI 0x66). OBS
   (../logs/boots/20261113-173517.log; /var/local/btbridge.log, wland.log, /var/tmp/bluetool-stub.log on the 27 root):
