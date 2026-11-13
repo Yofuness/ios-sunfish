@@ -273,6 +273,13 @@ Newest first. Earlier soaks were shorter or used other loads, so compare rates, 
 | 2026-10-31 z1 | kernel135, allocator | ~34 min, stopped early | 151 k | 0 | 3 | 2 | - |
 | 2026-10-31 soak1 | kernel134, allocator | 2 boots | ~113 k | 2 | at least 1 | not counted | - |
 
+### 2026-11-13 04:30 Fix written: Turnip 0114 (CS allocation failure sink), not built or tested yet
+Ports Mesa 584a0997c8e ("tu: Propagate allocation failures for tu_cs_* functions", not in our base): a refused CS BO
+marks the cs failed and points emits at a 16384-dword sink; vkEndCommandBuffer returns the OOM error. Ours on top: a
+failed command buffer is skipped at submit (waits/signals kept), a failed secondary fails its primary. Logs "sweet 0114:
+cs NAME: N-dword BO refused" / "skipping a failed command buffer". Off: SWEET_CS_FAIL_SINK=0. Still silent: pipeline/
+shader cs failures (as upstream). Expect a dropped frame instead of a crash; needs a forced-refusal test.
+
 ### 2026-11-13 03:40 New: Turnip NULL write when a command-stream BO allocation is refused (pool exhaustion)
 Boot 20261113-001648 at 4544.9 s (GPU video path test): the kernel refused WebKit.GPU an 8 MB buffer (pool 773 of
 940 MB, xnu 0122's "avail < len + 160 MB" rule); 32 ms later WebKit.GPU SIGSEGV far 0x0: tu_cs_add_bo fails inside
