@@ -17,6 +17,19 @@ CPUs, UFS, HFS root mounted read-only, launchd exec'd (k301b); iOS 16's launchd 
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 11:55 27.2.1 C1 root written to ufsroot1; k302a: root mount fails (journal create on a read-only device)
+- Write (the user's OK 10:55; /var backup first): `fastboot -S 256M flash userdata ../restore/root27/root27-c1-at16g.simg`
+  (-S 512M refused: max-download-size 0x10000000), 43 chunks OKAY, 660 s; first chunk 16 GiB DONT_CARE, output ends at
+  31.1 GB of 117.7 GB userdata. No erase/format. iOS 16 root (ufsroot0) untouched.
+- k302a (`rd=ufsroot1 ufsrw=0 rootrw=0 launchd_unsecure_cache=1 ignition_level=1 cs_integrity_skip=1 -v sweetgpu=0
+  sweetmtl=0`, sunfish-26.adt, battery 4431 mV): "BSD root: ufsroot1, major 1, minor 1"; hfs "Initializing the journal
+  (joffset 0x6a000 sz 0x800000)" -> strategy err 0x1e (EROFS) -> hfs_mountfs error 22 -> "cannot mount root, errno = 19",
+  retried every 5 s (OBS, ../logs/k302/k302a-rescue.txt). mkfs.hfsplus -J leaves the journal to be created at the first
+  mount, which needs writes. The HFS header parsed: ufsroot1 reads from the right place.
+- iOS 16 with sweetnofstab=1 (k167nofstab): SSH in 17 s, only ufsroot0 mounted (no /var); console shows daemons starting,
+  a mediaserverd crash; SpringBoard not checked.
+- Next: k302b with ufsrw=1 rootrw=1 (ufsroot1 is ours now).
+
 ### 2026-11-13 11:25 27.2.1 C1 root image built and PAC-rewritten (tools/mkiosroot27.sh, docs/root27.md)
 - Extract: `ipsw extract --dmg fs|sys|app` 85 s + `ipsw fw aea` 97 s (SystemOS key via --fcs-key .pem, OS key online from
   wkms, saved as .aea.key) -> root-src/: OS 9.27 GB, SystemOS 6.18 GB, AppOS 16 MB (UDIF/APFS, read with apfs-fuse).
