@@ -17,6 +17,16 @@ CPUs, UFS, HFS root mounted read-only, launchd exec'd (k301b); iOS 16's launchd 
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 13:00 k305a: TCO emulation works; launchd 27 then SIGILLs on LDG in libmalloc's hardened heap
+- kernel305 (1294). OBS (../logs/k305/k305a-rescue.txt): `sweet-nomte: security_config 0x20159 (task 0x20159) mask 1`
+  (12377 layout: hardened_heap=1, tpro=0, reserved=0, platform_restrictions_version=3, script_restrictions=1,
+  guard_objects=1, hardened_process_version=2); `SWEET EMU: first tco emulated (pid=1 pc=0x18f6548ac)`; then `sweet-undef:
+  pid 1 (launchd) ... pc 0x1833a0e90 word 0xd9600008 ... slide 0x2e34000` = unslid 0x18056ce90
+  `_memtag_assign_tag_contiguous+4` (libsystem_malloc) `ldg x8, [x0]`, called from `_mfm_alloc+652`.
+- libsystem_platform `__apply_security_config` maps value bits 0/1/2/6/8 -> config 0x1/0x2/0x4/0x40/0x100 (bit 0 via a cold
+  path). So the MTE strncmp variant was not from bit 2 (the source of k304a's variant choice stays open; TCO is emulated);
+  hardened_heap (bit 0) makes libmalloc tag memory. 1295 clears it too (sweetnomte bit 2). Next: kernel306.
+
 ### 2026-11-13 12:45 k304a: launchd 27's SIGILL = `msr tco, #1` in the MTE variant of strncmp
 - kernel304 (1293 sweet-undef log). OBS (../logs/k304/k304a-rescue.txt): `sweet-undef: pid 1 (launchd) esr 0x2000000 ec 0x0 pc
   0x19dec88ac lr 0x19952c258 word 0xd503419f sr_off 0x1dec88ac slide 0x116a8000`. Unslid 0x18c8208ac =

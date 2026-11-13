@@ -48,6 +48,8 @@ New patches (1290+):
   `has_sec_transition=1`) picks the $VARIANT$MTE strcmp/strncmp, whose `msr tco` SIGILLed launchd (k304a). Static
   reading says 12377 never sets bit 2 here (reserved without HAS_MTE; launchd = 0x18 + entitled bits), so the log line
   settles where the bit came from. `sweetnomte` bit 0 = mask, bit 1 = TCO emulation (default 3; 0 turns both off).
+- `1295` no hardened heap: also clears bit 0 (hardened_heap) of `security_config`: iOS 27 libmalloc tags allocations
+  with MTE when it is set (k305a: LDG in memtag_assign_tag_contiguous from mfm_alloc). sweetnomte bit 2, default on (7).
 - No patch needed for iOS 27's CPU-feature checks: DIT, SB, SHA512, SHA3, JSCVT, FCMA commpage bits and their
   hw.optional.arm.FEAT_* sysctls come from the ID registers of the boot CPU (an A55) in osfmk/arm/commpage/commpage.c;
   A55/A76 lack all six (GUESS from the Arm TRM values; check `sysctl hw.optional` on the first 12377 boot); commpage 0x10c is zeroed and unwritten; the user timebase type is USER_TIMEBASE_SPEC (CNTVCT, not

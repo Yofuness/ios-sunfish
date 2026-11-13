@@ -1,0 +1,39 @@
+From 693f39a9c95e8dfe5c88969642819770c50f0bfd Mon Sep 17 00:00:00 2001
+From: Yofuness <compiledchickennuggets@gmail.com>
+Date: Fri, 13 Nov 2026 12:37:51 -0500
+Subject: [PATCH] sunfish: security_config without hardened_heap (1295)
+
+---
+ bsd/kern/kern_exec.c | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
+index 9f1842d..4f6a5b4 100644
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -7345,13 +7345,21 @@ exec_add_apple_strings(struct image_params *imgp,
+ 		static int sweet_nomte = -1;
+ 		static uint32_t sweet_nomte_logged = 0;
+ 		if (__improbable(sweet_nomte < 0)) {
+-			int v = 3;
++			int v = 7;
+ 			PE_parse_boot_argn("sweetnomte", &v, sizeof(v));
+ 			sweet_nomte = v;
+ 		}
+ 		if (sweet_nomte & 1) {
+ 			security_config &= ~0x4U;
+ 		}
++		/*
++		 * 1295: bit 0 is hardened_heap; iOS 27's libmalloc then tags its allocations (mfm_alloc ->
++		 * memtag_assign_tag_contiguous: LDG, SIGILL here, k305a). Without MTE hardware it must stay off.
++		 * sweetnomte bit 2 (default on).
++		 */
++		if (sweet_nomte & 4) {
++			security_config &= ~0x1U;
++		}
+ 		if (sweet_nomte_logged++ < 4U) {
+ 			printf("sweet-nomte: security_config 0x%x (task 0x%x) mask %d\n", security_config,
+ 			    task_get_security_config(task), sweet_nomte & 1);
+-- 
+2.56.0
+
