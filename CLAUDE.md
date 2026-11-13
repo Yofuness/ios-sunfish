@@ -70,7 +70,7 @@ This file is the one home for the project's rules (AGENTS.md and the memory note
 - **Goal:** keep iterating until everything on iOS works (except iCloud). Getting as many systems working as
   possible comes first.
 - **Speed focus** (the user, 2026-10-31): ENDED 2026-11-02 (the user). Rules below that say "during the speed focus" no
-  longer apply. Current focus (the user, 2026-11-02): hardware video decode first, then apps and games (docs/plan.md).
+  longer apply. Current focus (the user, 2026-11-13): iOS 27 (via the iOS 26 kernel) on this phone for LibrePods (AirPods) work (docs/plan.md); iOS 16 feature work is parked.
 - **Focus:** a couple of systems at a time, from the Priority list in `docs/plan.md` (at most 5, the active one
   marked). Easy things go first: the user loves seeing progress.
 - **After each finished priority item** (paused during the speed focus): scan the Broken list in `docs/backlog.md` for low-hanging fruit and move the easiest items up

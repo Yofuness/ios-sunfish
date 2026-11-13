@@ -1,107 +1,76 @@
-# Plan (2026-11-02): hardware video decode, apps and games
+# Plan (2026-11-13): iOS 27 (on the iOS 26 kernel) for LibrePods work
 
-Rules: CLAUDE.md ("How to work"). Old plan: `docs/plans/2026-11-02-speed-and-heat.md`. One line per item;
-details and history in the feature Logs (`docs/features/<name>.md`).
+Rules: CLAUDE.md ("How to work"). Old plan: `docs/plans/2026-11-13-video-apps-games.md`. One line per item; details in
+the feature Logs: [ios26.md](features/ios26.md) (this port), bluetooth.md. Research: `research/notes/ios26-27-feasibility-2026-11-13.md`
+(sections 9-10 are current; read 10 before each stage).
 
-## Focus (the user, 2026-11-02)
-Make more things work: video in apps like Instagram first (hardware decode), then games and App Store apps.
-Interface speed and heat are good enough for daily use (Settings ~57 swaps/s, Control Center 43.8, peaks ~82 C);
-the speed focus is over. Targets (Claude's numbers, the user can change them):
-- Video: a 1080p H.264 video plays smoothly in Safari with hardware decode, CPU under 15 % of one core.
-- 3D: a WebGL game in Safari runs 15 min without a GPU hang.
-- Apps: one free App Store app installs and runs (gate for Instagram, Crossy Road, Minecraft).
-- Stability: under 1 GPU hang per hour of soak.
+## Focus (the user, 2026-11-13)
+Use this phone for LibrePods (AirPods protocol) development: it needs a current iOS. Target iOS 27; iOS 26 first only if
+it is the better route. Facts (research, OBS unless marked): iOS 17+ is arm64e-only; the 730G has no PAC, so the userland
+is PAC-lowered offline (zeta's prover, GiaSen's recipe) and the rest emulated in the kernel; three non-PAC ports boot iOS 26,
+one boots 27 (slow). No iOS 27 xnu source (Apple silent since 2026-06-18): 26 and 27 both run on xnu-12377.121.6 + 8 Darwin
+27 syscalls (UniXNU patch), so one kernel line serves both; the root (27.2.1 or 26.6.2) is chosen at Gate A. Nobody has
+paired AirPods on iOS 26/27 without hardware PAC: that is our deliverable. GUESS: Gate E in 25-45 working days.
+Targets: AirPods Pro 2 paired on iOS 27 (or 26), A2DP plays, AACP session captured and decoded (btsnoop); iOS 16 stays
+bootable until iOS 26/27 is daily-usable (every boot is RAM-only; never flash).
 
-## Test schedule
-- Normal test runs: 15 min at most. A/B comparisons: 5 boots per side (tools/sunfish-perfab.sh).
-- One 1 h soak per night, after `work/night` is set (9:30 pm or when the user says); results in [gpu-bugs.md](gpu-bugs.md).
-- A run with a hang, a backboardd restart, the panel off or 0 swaps is void.
-- Stop rule: a gain under 1 ms counts only if a 5-boot A/B confirms it.
+## The user's decisions (2026-11-13)
+- New direction approved; iPhone 11 (iPhone12,1) IPSWs approved (26.6.2 23G90 and 27.2.1 24B156 downloaded to
+  ../restore/ipsw, sha1 in iphone12,1.sha1; 27.0.1 24A446 may be fetched too if 27.2.1's census fails).
+- iOS 16's data area (/var, ufsroot1) may be wiped entirely if the new root needs the space. Still: check the target,
+  write a dated log line first, keep docs/recovery.md working, never flash or relock.
 
-## Priority (a couple at a time, dev speed on top; ▶ = being worked; ~half a day max each, except stage work of item 1)
-Only items Claude can move now. User tasks are listed below and never gate work; parked ones in docs/backlog.md.
-1. ▶ **Hardware video decode** (Snapdragon 730G video engine, "Venus"), in stages, each a go/no-go (video.md):
-   0. Done 2026-11-03: all 4 clips play in software, 250-590 % of one core, max 64 C (video.md s0).
-   1. Done 2026-11-02: research, staged spec in video.md (PAS ID 9, HFI gen1, plugin slot ExampleIPB.videodecoder).
-   2. Done 2026-11-03: firmware boots, H.264 session opens/closes; 10/10 rounds idle, 29/29 under 15 min UI load (s7c).
-   3. Done 2026-11-03 (v3e): `venusctl decode` bit-exact vs ffmpeg at 320x240 and 1280x720. Left: speed on a long clip.
-   4. ▶ Done 2026-11-03: 4a venusd, 4b VT plugin, 4c Safari H.264 via Venus, venusd at boot + recovery. 2026-11-12: picture
-      right (B62 was the flame-shot), no lag, start gap ~0.5 s. 4d: GPU path works (15 min 1080p 14/24239
-      dropped, backboardd ~20 %) but back to opt-in 05:50: 4 video tabs exhaust the pool (B65, Rgba16f + staging; fix being
-      written) and crash WebKit.GPU (B64, 0114 site 2). Default again once both are fixed. O14 camera CPU. 4e HEVC.
-   5. Tuning: heat, 4K, several streams at once (feeds).
-2. **3D**: done 2026-11-03: three.js games_fps (WebGL 2) 15 min, 0 hangs (7.4 fps). Left: speed.
-3. **Wi-Fi throughput** (B57): 0.53 -> 3.0 (Interactive) -> 5.8 MB/s (HT20, ht1) on 2026-11-03. Next: wland's CPU
-   (~68 % at 5.8 MB/s: ~10 pmem syscalls + one write per frame).
-4. **App Store access**: blocked on device attestation (B56: FairPlay/Anisette fail, media token 401); waiting for the
-   user's decision (Questions). Meanwhile: WebGL speed (games_fps 7 fps, GPU-bound).
-5. **GPU stability**: G1 (no recovery) and G4 (backboardd restart); nightly soak; fix whichever rises (gpu.md).
-6. **Garbled and undrawn images** (B44, B53): Notes attachments, Maps glitch (Safari tab tiles mostly draw now, B53).
-7. **Upstream takeaways** (2026-11-12, best first; backlog U12-*): done 2026-11-12: keep VkDevice (0112, A/B 2/2),
-   isb (0281), [device limits] filled (0132, 38/39 fields; check Photos/B44 next); U12-1b bridge 0133 (A/B 2/2, kept on); YCbCr sampled in place (video CPU, 6-10 h),
-   cheap checks: submit cuts, FS constlen, cold cache, MSAA A/B. Older items: "Upstream" below.
+## Stages (go/no-go gates; ▶ = being worked; stage work is exempt from the half-day limit, sub-steps are not)
+0. ▶ **iOS 16 btsnoop** (0.5 d): btbridge `-snoop` (default off) writing btsnoop H4 both ways; one boot with AirPods Pro 2;
+   decode with pabloaul/apple-wireshark (ACL connect, AACP, 0x1D, handshake version, 40 s drop yes/no). Fix bluetooth.md's
+   stale State line (A2DP works, audio.md 2026-10-30). Gives LibrePods data now.
+1. **Build host** (1-1.5 d): parameterise tools/vm-build-xnu.sh + tools/macos-vm/* (VM_DIR, MACOS_VERSION, XC, PATCH_DIR,
+   KDK_MODE=fake), guard against a second live VM; then a second VM `~/VMs/macos15` (Sequoia 15.7 + Xcode 26.1, 40-50 GB).
+   Xcode needs an Apple ID download: user task U-X26 (until then try Xcode 16.2 if it is on disk). **Gate B:** stock
+   xnu-12377.121.6 DEVELOPMENT links (VMAPPLE smoke test, then SWEET).
+2. **Donor census** (1 d, host only, can run before stage 1): extract both IPSWs (out of git), zeta's prover on each cache
+   (PAC, FJCVTZS/FCMA/LRCPC2/CSSC/MOPS/BF16 counts), strings of bluetoothd/BlueTool/audioaccessoryd (BT_HCI_TRANSPORT,
+   com.apple.uart.bluetooth, .sk.bluetooth, bcm_vsc). **Gate A:** no unguarded ISA beyond PAC+FJCVTZS+FCMA(+BF16/I8MM/SHA3)
+   in hot code and a POSIX H4 transport path exists. Root: 27.2.1 if as clean as 26.6.2, else 26.6.2.
+3. **Kernel rebase** (7-12 d): Scion's ios-sweet layer on 12377 (MIT) as base, UniXNU's 8-syscall patch, our 0125-0285
+   without 0160's vendored tree, PAC layer (zeta plain-auth + an EL0 emulator), GiaSen facts re-implemented (no licence:
+   ideas only). New tree work/src/xnu-12377, patches xnu/patches-12377/. **Gate C:** RAM-booted kernel reaches serial
+   launchd, then SSH over USB-ECM, on a rewritten root in its own region; iOS 16 still boots.
+4. **Root pipeline** (2-4 d, inside 3): mkiosroot for the new IPSW + PAC rewrite incl. TEXT_STUBS (BRAA x16,x17), ad hoc
+   signing / trust cache, N104 ADT (random-seed, CTRR props), HFSX >= 24 GB in its own userdata region (iOS 16 /var may go).
+5. **Desktop** (10-15 d): IOMFB/IOSurface/HID (160-byte records) ABI, identity, AMFI/keystore, Wi-Fi (wland), software
+   compositing first, then the Metal bridge. **Gate D:** SpringBoard Home + touch, no backboardd loop, 15 min without a hang.
+6. **Bluetooth + AirPods** (5-10 d; note s9.3): 0226 kctl + exec_env/exec_swap boot-args, 251-byte vendor-reply pad
+   (btbridge.c:66), BlueTool deepsleep, keystore cap (0123), 0231 + BTAudioHALPlugin, pair, btsnoop. **Gate E:** AirPods
+   paired, survive a reboot, A2DP plays, AACP handshake + 0x4D decoded. The LibrePods deliverable.
+7. **Parity** (open): camera, video (Venus), haptics, audio polish on the new root; the other root version if useful.
+Switches: 27 -> 26.6.2 root if a 27 root stalls > 3 days before Gate D on an ABI break 26 lacks; 26 -> 27 after Gate E
+when 27's census is clean. xnu-13 source appearing changes nothing before Gate E (the daily upstream check watches it).
 
-After these: small Metal test apps built here (textured cube with depth, compute), then Crossy Road (Unity), Instagram,
-Minecraft. Likely needed on the way: YUV surfaces in the bridge (G7 "planar iosurface refused"), louder speaker (B16),
-a GPU stand-in for the missing colour-convert/scale hardware (helps Photos too; cpu.md phs).
-
-## GPU bugs
-Listed with exact log lines and rates in [gpu-bugs.md](gpu-bugs.md) (not auto-loaded). Fix one when it voids tests,
-stops phone work, or doubles in rate after a change (then turn that change off first).
+## Next (in this order; a fresh /loop session starts here)
+1. Stage 0 btsnoop (implementer for btbridge, builder, one phone-runner boot). 2. Stage 2 census in parallel (one
+investigator; IPSWs are on disk once the download task finishes; extracted files under ../restore/ipsw/x/, out of git).
+3. Stage 1 VM script parameterisation (no new VM yet); then the Sequoia VM once Xcode 26.1 is available (user task).
+4. Keep iOS 16 healthy: the B64/B65 result (gpu15e, bundle with Turnip 0115 + bridge 0137) decides whether
+   SWEET_YCBCR_GPU=1 goes back to default (video.md); no new iOS 16 feature work.
 
 ## Phone
-Claude's since 2026-11-12 21:03 (the user). Booted t167zb (2026-11-13 05:16): kernel167 (= kernel162 + xnu 0281 isb, 0282 GetStatus NotReady after a
-failed recovery, 0283 atomic flame-shot, 0284 G2 submit logging, 0285 lost span), bundle c916fe4+ (+ Turnip 0112 keep VkDevice, 0113 G2 fix,
-frontend 0132 device limits, 0135 snapshot sync, 0136, bridge 0133 restart redo, 0134, Turnip 0114 CS OOM sink), venusd/vtvenus 6a24d64 (stall detectors, VT QoS), wland 206585d
-(HT20, Interactive, bounds checks), camd + hapticd Interactive, cam41. Everyday boot: `tools/sunfish-test.sh -k 167 TAG sweetse9=2 sweetcampmic=2 sweetswapbig=6
-sweetampreset=1 sweetpmemwc=2 sweetgpucap=512 sweetgpukill=0` (sweetgpukill=0 since 2026-11-12: backboardd survives recovered hangs with 0112; t166z was booted without it). /var/local/mtl2-env = SWEET_U0011..14=1,
-SWEET_SURF_FLUSH=1, SWEET_CULL=3 (SWEET_YCBCR_GPU=1 opt-in; TU_FETCH_GMEM_MIN_DRAWS=20 removed: G8) (tools/sunfish-install-speed.sh); backboardd env CA_DISABLE_LUMA_BOOST=1 CA_FORCE_TIMER=1.
-
-## Next (in this order)
-0. 2026-11-13 05:50: a) GPU video path opt-in again until B65 + B64 are fixed (video.md 05:50). b) G2: Turnip 0113 installed, watch soaks for
-   "submit bad". c) B53 mostly works (disk cache; gpu.md 04:55). d) Turnip 0114 (fixed 1d7338e) installed t167zb: forced
-   refusals OK; a second far 0x1b20 site under real OOM (B64, being symbolicated). e) Night soak tonight on kernel167 + 0114.
-1. Wi-Fi CPU: userland batching (356c09a) didn't help (bat, 20:40); the per-frame reads + one /dev/wlan write per frame
-   dominate: a kernel batched input path is the next step (parked behind the items below).
-2. Video CPU: credit path done (mediaserverd 55 -> 20, venusd 32 -> 10, 0 drops). Left: backboardd ~45 (vImage; bridge 0131
-   in-place GPU conversion: backboardd 47 -> 16 % but 492/899 dropped, a stall: not kept), network ~40, the first-session "error -60 at frame 17" resync.
-3. Done: launchd Interactive A/B: camd (open 5.7 -> 0.7 s, 30 fps) and hapticd kept; sensors, btbridge cost CPU, reverted.
-4. GPU: suspect link Venus session start → GPU fault (2 of ~5 hangs today); B53 render-server snapshots intermittently
-   empty; B50 Maps; WebGL speed (Optimize).
-5. Night soak n9 done 2026-11-12 (kernel163): 60 min, 0 RPMh/SPMI/G1/G4, 1 G2 + backboardd restart (void). Next soak: kernel166 + sweetgpukill=0.
-
-## User tasks (details in user-tasks.md; nothing waits on these)
-proximity by hand (U17), battery discharge (U3), headphone plug test (U15), Files check (U13), touch while plugged in (U14).
-Parked for later (the user, 2026-10-30): Compass accuracy, camera far focus, auto-brightness (B42), headphone jack iOS side.
-Back in play now the speed focus is over: speaker volume (B16), garbled images (B44), stale clock (B49), battery + camera
-CPU (O14), camera polish (B48).
-Finished items: [completed.md](completed.md) (not auto-loaded).
-
-## Upstream, older (2026-11-01; details in backlog.md; new ones go on Priority 7)
-- Touch poll under 8 ms while touched (hakios-xnu 6d8f818; ~3.5 ms input lag, guess; needs a latency tool).
-- RPMh try-lock: retry on EBUSY, a vote can fail silently now (0.5 h; found reading ours for e5b01a0).
-- xpcproxy identity version (hakios-xnu 78b518b): first count the errors in one Safari oslog.
-- Privilege table (hakios-xnu 502aee8, 2 h): may wake daemons quieted for heat, watch idle CPU.
-- Speaker guard for louder sound (315e973, 3-5 h), iOS microphone (2bb073e, 1-2 days, B23 risk): with B16.
-- Driver review reports: wifi/ADSP findings fixed (d7f8d59, to install + check); camera ring (1800069), battery, cpufreq not checked.
+Claude's (the user, away 2026-11-13). iOS 16 everyday boot: `tools/sunfish-test.sh -k 167 TAG sweetse9=2 sweetcampmic=2
+sweetswapbig=6 sweetampreset=1 sweetpmemwc=2 sweetgpucap=512 sweetgpukill=0`; kernel167, bundle with Turnip 0114/0115 +
+bridge 0137 (gpu15e); mtl2-env SWEET_U0011..14=1, SWEET_SURF_FLUSH=1, SWEET_CULL=3 (+SWEET_YCBCR_GPU=1 while testing).
+Never kill mediaserverd/camd in tests (hard reset 2026-11-13 05:10): reboot instead.
 
 ## Questions for you (Claude took the recommended path meanwhile)
-- App Store (B56): it fails on Apple's device attestation (FairPlay hardware info -42184, Anisette -45061, media token
-  401), not on the network. Getting past it means making the phone present an Apple device identity to Apple's
-  servers (spoofing FairPlay/Anisette data), which circumvents Apple's DRM/attestation and is likely against Apple's
-  terms. Claude has not started on it. Do you want this pursued, and if so within what limits? (Parked meanwhile.)
-- PowerLog and CoreDuet databases on the phone were moved aside (not deleted) to /var/local/idlefix-db, to stop the idle
-  CPU burn; `tools/sunfish-idlefix-db.sh --undo` restores them. OK to delete them later? (Kept for now.)
+- Xcode 26.1 for the new build VM needs an Apple ID download (user task U-X26 in user-tasks.md). Meanwhile Claude
+  does stages 0 and 2 and the script work.
+- App Store (B56, attestation spoofing) and the PowerLog/CoreDuet deletion: still open, parked with the old plan.
 
 ## Your tasks at the phone
-In [user-tasks.md](user-tasks.md) (not auto-loaded): 11 open. Claude doesn't wait on them; it moves to the next item.
-
-## Dev speed (on top of the priority list when found; ~1 h max each)
-- (none)
+In [user-tasks.md](user-tasks.md): Xcode 26.1 download (U-X26) first; the old iOS 16 ones are parked.
 
 ## Backlog
-The Broken, Later and Optimize lists are in [backlog.md](backlog.md) (not auto-loaded); leftover speed items in Optimize.
+Broken/Later/Optimize in [backlog.md](backlog.md); iOS 16 items stay there, parked by the new direction.
 
 ## Verification
-Each item: numbers in the feature Log, this plan and the README status table in the same commit, a journal line,
-a webcam check for anything visible, battery ≥ 3600 mV before each boot.
+Each stage: numbers in features/ios26.md's Log, this plan and the README status table in the same commit, a journal
+line, a webcam frame after every boot, battery >= 3600 mV before each boot, `=== TAG` markers per run.

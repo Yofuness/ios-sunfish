@@ -4,6 +4,10 @@ Things only a person at the phone can do (feel, listen, look, plug in). Claude k
 reads the answers here or in chat. Moved out of docs/plan.md on 2026-10-30 (the user's ask). Done ones go to
 [completed.md](completed.md).
 
+- U-X26 (first; 2026-11-13, the iOS 26/27 direction) Xcode 26.1 for the new build VM: sign in at
+  https://developer.apple.com/download/all/ with your Apple ID, download "Xcode 26.1" (.xip, ~3 GB) and put it in
+  `../restore/xcode/` (create it). Also fine: Xcode 16.2 for a first try. Claude can't do this (Apple ID login). ~10 min.
+- (The iOS 16 tasks below are parked by the new direction; answer them only if convenient.)
 - U1 flashlight button by hand: tap on/off, long-press for a lower level. ~2 min.
 - U3 battery % while discharging: phone off the charger 30 min, on kernel106 with sweetbattery=2 (Claude boots it). (B13)
 - U4 one boot on the TB4 port + 240 W cable, to read the charger status on both sources (optional). (B14)

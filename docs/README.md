@@ -18,7 +18,7 @@ feature changes state). Rules: [CLAUDE.md](../CLAUDE.md).
 | [archive/](archive/) | the old status tables ([status-2026-10-28.md](archive/status-2026-10-28.md)), the flame docs ([archive/flame/](archive/flame/)) and the sweet docs ([archive/sweet/](archive/sweet/)) |
 
 Feature files: [apps](features/apps.md), [audio](features/audio.md), [battery](features/battery.md),
-[bluetooth](features/bluetooth.md), [boot](features/boot.md), [brightness](features/brightness.md),
+[bluetooth](features/bluetooth.md), [boot](features/boot.md), [ios26](features/ios26.md), [brightness](features/brightness.md),
 [buttons](features/buttons.md), [camera](features/camera.md), [charging](features/charging.md),
 [clock](features/clock.md), [cpu](features/cpu.md), [display](features/display.md),
 [flashlight](features/flashlight.md), [gpu](features/gpu.md), [gpu-memory](features/gpu-memory.md), [haptics](features/haptics.md),
