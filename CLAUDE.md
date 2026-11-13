@@ -170,5 +170,8 @@ This file is the one home for the project's rules (AGENTS.md and the memory note
 - **Phone access:**
   - Only one session or agent uses the phone at a time.
   - If the user says another session is on the phone, don't run `phone-runner`.
+- **Workflows / ultracode** (the user, 2026-11-12): workflow agents never touch the phone or the build VM. Phone work
+  goes through one `phone-runner` at a time, builds through one `builder` at a time, both outside the fan-out.
+  Workflows are for read-only analysis, research, writing patches (one tree each) and reviews.
 - **When usage runs low (Max plan):** run the main session on Sonnet for long, routine plan steps. Switch back to
   Opus for design decisions or when stuck after two failed attempts.
