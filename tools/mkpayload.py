@@ -41,10 +41,19 @@ RAMLOG = CMDLINE + BOOT_LINE_LENGTH - 16	# 0x298: ring_va, total_va
 
 
 def kernel_symbols(path, *names):
-    """Addresses of the named symbols (0 if absent), from nm."""
-    import subprocess
+    """Addresses of the named symbols (0 if absent), from nm.
+    GNU nm cannot read Mach-O, so on Linux this found nothing and the shim's RAM-log mailbox stayed unarmed.
+    SUNFISH_LLVM_NM=1 (k301a; IOS-26-Hot tools/mkpayload.py, MIT) tries llvm-nm first: opt-in, because it
+    changes every payload (kernel167's too)."""
+    import shutil, subprocess
     found = dict.fromkeys(names, 0)
-    out = subprocess.run(['nm', path], capture_output=True, text=True).stdout
+    out = ''
+    for prog in (['llvm-nm'] if os.environ.get('SUNFISH_LLVM_NM') == '1' else []) + ['nm']:
+        if shutil.which(prog):
+            res = subprocess.run([prog, path], capture_output=True, text=True)
+            if res.returncode == 0 and res.stdout:
+                out = res.stdout
+                break
     for line in out.splitlines():
         parts = line.split()
         if len(parts) == 3 and parts[2] in found:
@@ -169,11 +178,12 @@ def add_gpufw_to_adt(adt_blob, fw_dir):
 
 
 def adt_dram(adt_blob):
-    """Kernel-managed RAM <base, size> from the ADT's /chosen dram-base/dram-size."""
+    """Kernel-managed RAM <base, size> from the ADT's /chosen dram-base/dram-size, or sweet-phys-base/sweet-mem-size
+    when present (mkadt.py --xnu12377, where dram-* is all of RAM; IOS-26-Hot tools/mkpayload.py, MIT)."""
     root, _ = adt.parse(adt_blob)
     chosen = next(c for c in root.children if c.name == 'chosen')
-    return (struct.unpack('<Q', chosen.prop('dram-base'))[0],
-            struct.unpack('<Q', chosen.prop('dram-size'))[0])
+    return (struct.unpack('<Q', chosen.prop('sweet-phys-base') or chosen.prop('dram-base'))[0],
+            struct.unpack('<Q', chosen.prop('sweet-mem-size') or chosen.prop('dram-size'))[0])
 
 
 def build(kernel_path, adt_path, cmdline, ramdisk_path=None, poke_path=None, gpufw_dir=None):

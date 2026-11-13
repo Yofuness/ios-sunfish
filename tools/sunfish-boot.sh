@@ -61,7 +61,9 @@ echo "$cmdline" > "$P/$name.cmdline"
 # CAMERA=1: ADT with /arm-io/isp + /product/camera flash (mkadt.py --camera; Camera.app prerequisites,
 # camera.md); HAPTICS=1: /product/haptics (mkadt.py --haptics; iOS's Actuator, haptics.md); both: one tree with
 # both. Boot-arg sweetfb_2x: the @2x canvas (mkadt.py --2x; smoothness.md). Default the usual
-# work/boot/sunfish-hi.adt. ADT=PATH picks any other tree.
+# work/boot/sunfish-hi.adt. ADT=PATH picks any other tree (CAMERA/HAPTICS/sweetfb_2x override it): kernel301+
+# (xnu-12377) needs ADT=work/boot/sunfish-26.adt (mkadt.py --xnu12377). SUNFISH_LLVM_NM=1 arms the shim's RAM-log
+# mailbox (mkpayload.py; changes the payload, so off by default).
 adt=${ADT:-$P/sunfish-hi.adt}
 adtflags= adtname=sunfish-hi
 [ "${CAMERA:-0}" = 1 ] && adtflags="$adtflags --camera" adtname=$adtname-camera

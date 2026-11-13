@@ -5,7 +5,7 @@ Only what the early boot path actually reads (see docs/archive/sweet/NOTES.md); 
 MMIO address comes from the flame (Pixel 4, SM8150) live FDT. The kernel's
 built-in drivers still match the Redmi names (xiaomi,sweet, qcom,kryo470,
 sweet,display), so those stay next to the flame ones.
-Usage:  mkadt.py OUT.adt [--dump] [--qemu] [--highmem] [--camera] [--haptics]
+Usage:  mkadt.py OUT.adt [--dump] [--qemu] [--highmem] [--camera] [--haptics] [--xnu12377]
 """
 import hashlib, os, struct, sys
 
@@ -22,6 +22,11 @@ MEM_SIZE = 0x4d000000
 # big, 0xc0000000, so XNU takes 0x1_00000000 up (same size as on the Redmi).
 HIGH_PHYS_BASE = 0x100000000
 HIGH_MEM_SIZE = 0xf8c00000  # sunfish: RAM ends 0x1fcc00000; top 64 MiB kept for log stashes
+# --xnu12377 (kernel301+, ios26.md; IOS-26-Hot tools/mkadt.py, MIT): 12377 maps PAs outside /chosen dram-base..size
+# as Device memory (pmap.c wimg_to_pte WCOMB), so /pram etc. must lie inside: dram-* = all of sunfish's RAM
+# (live DT starts it at 0x80000000; Android iomem: System RAM ends 0x1fcbfffff), and the kernel-managed range moves
+# to sweet-phys-base/sweet-mem-size (read by mkpayload.py adt_dram).
+DRAM12377_BASE, DRAM12377_SIZE = 0x80000000, 0x1fcc00000 - 0x80000000
 # /arm-io children are relative to this; it must not be 0 (serial_init bails)
 SOC_BASE = 0x01000000
 
@@ -98,21 +103,27 @@ def product_haptics_node(ph):
     return node('haptics', [ph(), ('closed-loop', u32(1)), ('supports-3rd-party-haptics', u32(1))])
 
 
-def build(seed=None, qemu=False, highmem=False, camera=False, haptics=False, twox=False):
+def build(seed=None, qemu=False, highmem=False, camera=False, haptics=False, twox=False, xnu12377=False):
     """qemu=True: same tree, but with QEMU virt's GIC addresses and CNTFRQ (tools/qemu-sweet.py).
     camera=True: /arm-io/isp + /product/camera flash (Camera.app prerequisites, camera.md).
     haptics=True: /product/haptics (closed-loop, supports-3rd-party-haptics; haptics.md).
-    twox=True: 750x1624 @2x canvas (boot-arg sweetfb_2x=1; smoothness.md)."""
+    twox=True: 750x1624 @2x canvas (boot-arg sweetfb_2x=1; smoothness.md).
+    xnu12377=True: the tree for kernel301+ (xnu-12377; implies highmem): 256-byte random-seed, dram-* = all RAM,
+    sweet-phys-base/sweet-mem-size, kernel-ctrr-to-be-enabled (k301a, research/notes/k301-noboot-2026-11-13.md)."""
+    highmem = highmem or xnu12377
     phys_base, mem_size = (HIGH_PHYS_BASE, HIGH_MEM_SIZE) if highmem else (PHYS_BASE, MEM_SIZE)
     gicd, gicr, timebase = (QEMU_GICD, QEMU_GICR, QEMU_TIMEBASE) if qemu else (GICD, GICR, TIMEBASE)
-    seed = seed if seed is not None else os.urandom(64)
+    # xnu-12377 panics in arm_vm_init unless it gets 4 x 64 bytes (prng_random.c); 8796 asked for 32
+    seed = seed if seed is not None else os.urandom(256 if xnu12377 else 64)
+    dram_base, dram_size = (DRAM12377_BASE, DRAM12377_SIZE) if xnu12377 else (phys_base, mem_size)
     phandle = iter(range(1, 1000))
     ph = lambda: ('AAPL,phandle', u32(next(phandle)))
 
     chosen = node('chosen', [
         ph(),
-        ('dram-base', u64(phys_base)),
-        ('dram-size', u64(mem_size)),
+        ('dram-base', u64(dram_base)),
+        ('dram-size', u64(dram_size)),
+    ] + ([('sweet-phys-base', u64(phys_base)), ('sweet-mem-size', u64(mem_size))] if xnu12377 else []) + [
         ('random-seed', seed),
         ('debug-enabled', u32(1)),
         ('firmware-version', cstr('flame-shim')),
@@ -157,7 +168,8 @@ def build(seed=None, qemu=False, highmem=False, camera=False, haptics=False, two
         # Panic region size (with /pram below): XNU's SavePanicInfo spins forever
         # without one, so panics printed no backtrace.
         ('embedded-panic-log-size', u32(PANIC_LOG_SIZE)),
-    ], [node('memory-map', [ph()]),
+        # 12377 ml_unsafe_kernel_text() asserts without it (machine_routines.c)
+    ] + ([('kernel-ctrr-to-be-enabled', u32(1))] if xnu12377 else []), [node('memory-map', [ph()]),
         # Local boot policy (kern_csr.c): SIP relaxed like `csrutil disable`
         # (lp-sip0: untrusted kexts, unrestricted FS, task_for_pid, kernel
         # debugger, dtrace, nvram), lp-sip1: unauthenticated (unsealed) root.
@@ -298,7 +310,7 @@ def build(seed=None, qemu=False, highmem=False, camera=False, haptics=False, two
 
 if __name__ == '__main__':
     root = build(qemu='--qemu' in sys.argv, highmem='--highmem' in sys.argv, camera='--camera' in sys.argv,
-                 haptics='--haptics' in sys.argv, twox='--2x' in sys.argv)
+                 haptics='--haptics' in sys.argv, twox='--2x' in sys.argv, xnu12377='--xnu12377' in sys.argv)
     blob = adt.serialize(root)
     open(sys.argv[1], 'wb').write(blob)
     if '--dump' in sys.argv:

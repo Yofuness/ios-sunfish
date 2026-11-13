@@ -17,6 +17,17 @@ not booted yet. Stage 0 btsnoop done. **Updated:** 2026-11-13.
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 10:05 ADT for xnu-12377 (sunfish-26.adt)
+- Experiment E1 of research/notes/k301-noboot-2026-11-13.md, host only. `tools/mkadt.py --xnu12377` (implies --highmem)
+  -> work/boot/sunfish-26.adt (13772 B): /chosen random-seed 256 B (was 64; 12377 panics in arm_vm_init below 256),
+  dram-base 0x80000000 + dram-size 0x17cc00000 (all RAM, ends 0x1fcc00000: live DT start, Android iomem end; boot.md),
+  sweet-phys-base 0x100000000 + sweet-mem-size 0xf8c00000 (the old kernel range), kernel-ctrr-to-be-enabled u32(1).
+- mkpayload.py adt_dram() prefers sweet-phys-base/-mem-size (IOS-26-Hot, MIT). kernel301 + sunfish-26.adt: phys_base
+  0x100000000, entry PA 0x1015b4488, kernel_end PA 0x1029cc000 (same placement as with sunfish-hi.adt).
+- SUNFISH_LLVM_NM=1 (opt-in): llvm-nm finds _sweet_log_ring/_total, arming the shim RAM-log mailbox; GNU nm never did.
+- iOS 16 unchanged: mkadt trees byte-identical for a fixed seed (5 flag combos); kernel167 payload byte-identical, image
+  identical except avbtool's random 64-byte footer salt/digest (same for two builds of the same payload).
+- Boot: `ADT=work/boot/sunfish-26.adt tools/sunfish-boot.sh k301b work/kernel301/kernel.development.sweet ...`. Not booted yet.
 ### 2026-11-13 10:20 k301a: first kernel301 RAM boot: no output, back in fastboot within ~1 min (reset, logged)
 - Cmdline: `debug=0xc serial=3 cpus=8 keepsyms=1 -enable_kprintf_spam -noprogress rd=ufsroot0 unentitled_ios_sim_launch=1
   ignition_level=1 wdt_test=no_user_checkin launchd_unsecure_cache=1 wdt=-1 sweetmotion=0x4bf sweetrtcoff=... -v sweetgpu=0
