@@ -17,6 +17,18 @@ not booted yet. Stage 0 btsnoop done. **Updated:** 2026-11-13.
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 10:20 k301a: first kernel301 RAM boot: no output, back in fastboot within ~1 min (reset, logged)
+- Cmdline: `debug=0xc serial=3 cpus=8 keepsyms=1 -enable_kprintf_spam -noprogress rd=ufsroot0 unentitled_ios_sim_launch=1
+  ignition_level=1 wdt_test=no_user_checkin launchd_unsecure_cache=1 wdt=-1 sweetmotion=0x4bf sweetrtcoff=... -v sweetgpu=0
+  sweetmtl=0 ufsrw=0 rootrw=0` (iOS 16 ADT/shim via sunfish-boot.sh). Battery 4457 mV.
+- Storage safe by construction (OBS source): ufsrw=0 -> sweet_ufs.c:765/830 su.writable=0, writes refused :297, EROFS :456;
+  cmdline keys beat 1244's baked defaults (bootargs.c:211-218); sunfish-boot.sh drops base keys an extra arg repeats.
+- Result (OBS): not one line on the USB/serial log after the boot marker; webcam at 60 s black; `fastboot devices` saw the
+  phone again at 09:47. Where it died is unknown (shim handoff, early fault before console, or a watchdog).
+- iOS 16 kernel167 booted right after (k167back, 4456 mV, SSH in 17 s); the webcam frame showed the verbose console, not yet
+  the lock screen (as at 07:11 this morning; not rechecked).
+- Next: analysis of the boot path for a 12377 kernel (shim/Mach-O/boot_args vs Hot's loader), then an early-fb-console boot.
+
 ### 2026-11-13 10:05 GATE B PASSED: kernel301 builds (Sequoia VM, builder)
 - `VM_DIR=~/VMs/macos15 MACOS_VERSION=26.5 XC=/Applications/Xcode_26.1.app PATCH_DIR=xnu/patches-12377 KDK_MODE=fake
   tools/vm-build-xnu.sh 301 --clean` (8b64b9d: 26.x mirrors IOS-26-Hot's CI, dxb bd88697): exit 0, 372 s (patch stage 6 s,
