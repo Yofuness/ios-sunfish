@@ -273,6 +273,16 @@ Newest first. Earlier soaks were shorter or used other loads, so compare rates, 
 | 2026-10-31 z1 | kernel135, allocator | ~34 min, stopped early | 151 k | 0 | 3 | 2 | - |
 | 2026-10-31 soak1 | kernel134, allocator | 2 boots | ~113 k | 2 | at least 1 | not counted | - |
 
+### 2026-11-13 06:00 B64 second site: upstream Turnip leaves pipeline->cs uninitialised on a refused suballoc
+Investigator (observed, boot 20261113-051618, WebKit.GPU pid 454, libvulkan_freedreno at 0x11d288000): pc +0xacf08
+tu_bo_init_new_explicit_iova+0x34 (dev NULL) <- tu_cs_reserve_space <- tu_cs_begin_sub_stream_aligned <-
+tu_CreateGraphicsPipelines<A6XX> (emit_state on pipeline->cs) <- bridge compiles.rs:308 <- render.rs:2466 (Linked GPL
+library) <- draw_resident. tu_pipeline.cc:4580 checks tu_pipeline_allocate_cs's result only when the library has
+PRE_RAST|FS combined, never for our 4-part GPL libraries; a refused suballoc BO leaves pipeline->cs zeroed. Not 0114
+(same 0x1b20 = device->physical_device by coincidence). Fix: Turnip 0115 (check the result, free, return OOM) + test
+knob SWEET_PIPE_FAIL_TEST, being written. SpringBoard [129.223]: CoreTelephony ReregisterClientForAllEvents+328 at
+SpringBoard startup after a script restarted backboardd ([126.518]); unrelated to 0114 (1 of ~40 boots).
+
 ### 2026-11-13 05:50 0114 fixed (1d7338e) on the phone: forced refusals OK, but far 0x1b20 still crashes under real OOM
 t167zb, boot 20261113-051618. SWEET_CS_FAIL_TEST=20 (MESA_LOG_FILE was not created; lines read from backboardd's
 stderr "TU: error: sweet 0114"): 26 forced refusals in backboardd (cmd cs 6, draw cs 9, draw sub cs 9, tile store 2),
