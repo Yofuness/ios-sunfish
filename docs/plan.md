@@ -21,10 +21,10 @@ bootable until iOS 26/27 is daily-usable (every boot is RAM-only; never flash).
   write a dated log line first, keep docs/recovery.md working, never flash or relock.
 
 ## Stages (go/no-go gates; ▶ = being worked; stage work is exempt from the half-day limit, sub-steps are not)
-0. ▶ **iOS 16 btsnoop** (0.5 d): btbridge `-snoop` (default off) writing btsnoop H4 both ways; one boot with AirPods Pro 2;
-   decode with pabloaul/apple-wireshark (ACL connect, AACP, 0x1D, handshake version, 40 s drop yes/no). Fix bluetooth.md's
-   stale State line (A2DP works, audio.md 2026-10-30). Gives LibrePods data now.
-1. **Build host** (1-1.5 d): parameterise tools/vm-build-xnu.sh + tools/macos-vm/* (VM_DIR, MACOS_VERSION, XC, PATCH_DIR,
+0. **iOS 16 btsnoop**: capture DONE (d61f019, validated bt0snoop 07:20: 2391 HCI records, tshark + apple-wireshark OK;
+   bluetooth.md State fixed). AirPods session: when the user says they're home (U-AP1 closed). ▶ Now: phone <-> laptop
+   ("glizzy") pairing test with btsnoop on; flag /var/local/btbridge.snoop off afterwards.
+1. ▶ **Build host** (1-1.5 d): scripts DONE (9854602, kernel167 byte-identical); parameterise tools/vm-build-xnu.sh + tools/macos-vm/* (VM_DIR, MACOS_VERSION, XC, PATCH_DIR,
    KDK_MODE=fake), guard against a second live VM; then a second VM `~/VMs/macos15` (Sequoia 15.7 + Xcode 26.1, 40-50 GB).
    Xcode 26.1 is on disk: ../restore/xcode/Xcode_26.1_Universal.xip (the user, 2026-11-13 06:55). **Gate B:** stock
    xnu-12377.121.6 DEVELOPMENT links (VMAPPLE smoke test, then SWEET).
@@ -63,7 +63,7 @@ Never kill mediaserverd/camd in tests (hard reset 2026-11-13 05:10): reboot inst
 - App Store (B56, attestation spoofing) and the PowerLog/CoreDuet deletion: still open, parked with the old plan.
 
 ## Your tasks at the phone
-In [user-tasks.md](user-tasks.md): U-X26 done (Xcode 26.1); the old iOS 16 ones are parked.
+In [user-tasks.md](user-tasks.md): U-X26 done (Xcode 26.1); U-AP1 closed (AirPods capture waits for the user to be home); the old iOS 16 ones are parked.
 
 ## Backlog
 Broken/Later/Optimize in [backlog.md](backlog.md); iOS 16 items stay there, parked by the new direction.
