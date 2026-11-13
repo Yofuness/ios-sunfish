@@ -2236,6 +2236,7 @@ static char sweetMemoryOwnerKey;
   memcpy((uint8_t *)dst+offset+y*dstRow,(const uint8_t *)src+(y0+y)*_row+x0*_texel,w*_texel);
 }
 @end
+static void fillBaseLimits(id device);   // 0132
 @implementation NBDeviceMethods
 - (NSString *)name {return gName;}
 - (uint64_t)registryID {return gRegistryID;}
@@ -2257,7 +2258,9 @@ static char sweetMemoryOwnerKey;
 // and feature tables from a hardware profile (`featureProfile`, `indirectArgumentBufferCapabilities`, a table of Apple GPUs) that this device
 // has not got: running them would claim an Apple GPU's capabilities. They are empty here, so a limit or feature the runtime measured is answered
 // by this file's own answers (installAnswers) and any other stays the base class's neutral 0/NO. Nothing is claimed that nothing measured.
-- (void)initLimits {}
+// 0132 (G10): the limits are the exception to "empty": system code reads the base class's limits structure itself instead of asking the
+// getters (fillBaseLimits below), so the device's answers are written into it.
+- (void)initLimits {fillBaseLimits(self);}
 - (void)initFeatureQueries {}
 - (void)initGPUFamilySupport {}
 - (void)initWorkarounds {}
@@ -2799,6 +2802,110 @@ static uint64_t askAnswer(SEL cmd,NSUInteger arg) {
 }
 static NSUInteger countArgAnswer(id,SEL cmd,NSUInteger arg) {return (NSUInteger)askAnswer(cmd,arg);}
 static BOOL flagArgAnswer(id,SEL cmd,NSUInteger arg) {return askAnswer(cmd,arg)!=0;}
+// 0132 (G10): the base class keeps its limits in one plain structure inside the device object ([device limits] returns its address:
+// self+8 in our Metal.framework, research/re/Metal.s:4565) and its own getters read their fields from it. This device answers most
+// getters itself, but PhotosUICore reads the 2D texture bounds from the structure (ldp at +0x84/+0x88 after [device limits], 6 sites)
+// and saw 0 x 0; the getters the device does not answer (3D/cube/1D sizes, line width...) read 0 from it as well. Ported from UniXNU/AdrenoMetal a38e12a fillBaseLimits
+// (NativeBridgeMetalFrontend.mm, MIT): each field is found by writing a marker into the structure and calling the base class's getter,
+// so no offset of an OS version is assumed. Ours also writes the runtime's alignment answers (*AlignmentBytes), float getters, and,
+// for limits the runtime has no answer for, Turnip's VkPhysicalDeviceLimits on the A618 (kTurnipLimits). SWEET_DEVICE_LIMITS=0: the
+// structure stays empty, as before.
+static bool deviceLimitsOn() {static const bool on=[]{const char *p=getenv("SWEET_DEVICE_LIMITS");return !(p&&*p&&atoi(p)==0);}();return on;}
+// Turnip a6xx gen1 (A615-A619): tu_device.cc tu_get_physical_device_properties_1_0, freedreno_devices.py. Used only where the runtime
+// gives no answer of its own (gAnswers) for the selector.
+static const struct {const char *selector;double value;} kTurnipLimits[]={
+ {"maxTextureWidth1D",16384},{"maxTextureWidth2D",16384},{"maxTextureHeight2D",16384},   // maxImageDimension1D/2D
+ {"maxTextureWidth3D",2048},{"maxTextureHeight3D",2048},{"maxTextureDepth3D",2048},       // maxImageDimension3D
+ {"maxTextureDimensionCube",16384},{"maxTextureLayers",2048},                            // maxImageDimensionCube, maxImageArrayLayers
+ {"maxTextureBufferWidth",1<<27},                                                         // maxTexelBufferElements (max_texel_buffer_range_elements)
+ {"maxComputeThreadgroupMemory",32768},                                                   // maxComputeSharedMemorySize (cs_shared_mem_size)
+ {"maxVertexAttributes",31},                                                              // maxVertexInputAttributes 32, Metal's attribute indices end at 30
+ {"maxInterpolatedComponents",124},                                                       // maxFragmentInputComponents
+ {"maxColorAttachments",8},                                                               // maxColorAttachments (MAX_RTS)
+ {"maxLineWidth",1.0},{"maxPointSize",4092},                                              // lineWidthRange[1] (line_width_max), pointSizeRange[1]
+};
+static void fillBaseLimits(id device) {
+ static bool done=false;if(done || !deviceLimitsOn())return;
+ Class base=objc_getClass("_MTLDevice");
+ SEL limitsSel=sel_registerName("limits");
+ if(!base || !device || ![device isKindOfClass:base] || !class_getInstanceMethod(base,limitsSel)){NBLOG(@"native-metal: base limits: no _MTLDevice limits");return;}
+ uint8_t *limits=((uint8_t *(*)(id,SEL))method_getImplementation(class_getInstanceMethod(base,limitsSel)))(device,limitsSel);
+ const ptrdiff_t at=limits-(uint8_t *)(__bridge void *)device;
+ const ptrdiff_t instance=(ptrdiff_t)class_getInstanceSize(base);
+ if(!limits || at<=0 || at>=instance){NBLOG(@"native-metal: base limits: structure at %td outside the %td-byte object",at,instance);return;}
+ // The structure ends where the next instance variable of the base class begins.
+ ptrdiff_t end=instance;bool found=false;
+ unsigned count=0;Ivar *ivars=class_copyIvarList(base,&count);
+ for(unsigned i=0;i<count;i++) {
+  const ptrdiff_t offset=ivar_getOffset(ivars[i]);
+  if(offset==at)found=true;
+  else if(offset>at && offset<end)end=offset;
+ }
+ free(ivars);
+ if(!found || end-at<8){NBLOG(@"native-metal: base limits: no structure ivar at %td",at);return;}
+ done=true;
+ const size_t size=(size_t)(end-at);
+ // The selectors to write: the runtime's limit and alignment answers (as a38e12a: max*/min*; ours: also *AlignmentBytes), then Turnip's
+ // for the selectors the runtime does not answer. A base getter that does not return the marker reads no field of the structure.
+ std::vector<std::pair<SEL,double>> wanted;
+ for(const auto &answer:gAnswers) {
+  const char *name=sel_getName(answer.first);
+  if(strncmp(name,"max",3) && strncmp(name,"min",3) && !strstr(name,"AlignmentBytes"))continue;
+  Method own=class_getInstanceMethod(object_getClass(device),answer.first);
+  if(!own || method_getTypeEncoding(own)[0]!='Q' || !answer.second)continue;
+  wanted.emplace_back(answer.first,(double)answer.second);
+ }
+ for(const auto &t:kTurnipLimits) {
+  SEL sel=sel_registerName(t.selector);
+  auto it=gAnswers.find(sel);if(it!=gAnswers.end() && it->second)continue;
+  // maxComputeThreadgroupMemory has no private answer; the public maxThreadgroupMemoryLength is the same limit, measured.
+  double value=t.value;
+  if(!strcmp(t.selector,"maxComputeThreadgroupMemory")){auto m=gAnswers.find(sel_registerName("maxThreadgroupMemoryLength"));if(m!=gAnswers.end() && m->second)value=(double)m->second;}
+  wanted.emplace_back(sel,value);
+ }
+ unsigned filled=0,tried=0;
+ for(const auto &want:wanted) {
+  Method original=class_getInstanceMethod(base,want.first);
+  if(!original || method_getNumberOfArguments(original)!=2)continue;
+  const char type=method_getTypeEncoding(original)[0];
+  if(type!='Q' && type!='I' && type!='f')continue;
+  ++tried;
+  IMP imp=method_getImplementation(original);
+  // The getter's answer as raw bits: the low 32 bits of an integer, the bits of a float.
+  auto seen=[&]()->uint64_t {
+   if(type=='f'){const float f=((float (*)(id,SEL))imp)(device,want.first);uint32_t bits;memcpy(&bits,&f,4);return bits;}
+   return type=='I'?((uint32_t (*)(id,SEL))imp)(device,want.first):((uint64_t (*)(id,SEL))imp)(device,want.first);
+  };
+  for(size_t offset=0;offset+4<=size;offset+=4) {
+   uint32_t saved;memcpy(&saved,limits+offset,4);
+   const uint32_t marker=0x5a17c000u|(uint32_t)(offset&0xfff);
+   memcpy(limits+offset,&marker,4);
+   const uint64_t got=seen();
+   memcpy(limits+offset,&saved,4);
+   if(got!=marker)continue;
+   // A 64-bit field also reads the next four bytes.
+   bool wide=false;
+   if(type=='Q' && offset+8<=size) {
+    uint32_t next,one=1;memcpy(&next,limits+offset+4,4);
+    memcpy(limits+offset,&marker,4);memcpy(limits+offset+4,&one,4);
+    wide=(seen()>>32)==1;
+    memcpy(limits+offset,&saved,4);memcpy(limits+offset+4,&next,4);
+   }
+   if(type=='f'){const float f=(float)want.second;memcpy(limits+offset,&f,4);}
+   else if(wide){const uint64_t value=(uint64_t)want.second;memcpy(limits+offset,&value,8);}
+   else {const uint32_t narrow=want.second>UINT32_MAX?UINT32_MAX:(uint32_t)want.second;memcpy(limits+offset,&narrow,4);}
+   ++filled;
+   break;
+  }
+ }
+ // What a reader of the structure sees now, through the base class's own getters.
+ auto baseAnswer=[&](const char *name)->unsigned long {
+  SEL sel=sel_registerName(name);Method m=class_getInstanceMethod(base,sel);
+  return m?(unsigned long)((NSUInteger (*)(id,SEL))method_getImplementation(m))(device,sel):0;
+ };
+ NBLOG(@"native-metal: base limits: %u of %u fields of %zu bytes filled (maxTexture2D %lux%lu)",filled,tried,size,
+  baseAnswer("maxTextureWidth2D"),baseAnswer("maxTextureHeight2D"));
+}
 static void installAnswers(Class cls) {
  uint32_t kind=0;
  for(size_t i=0;const char *name=nmb_device_answer_selector(i,&kind);i++) {
@@ -2866,6 +2973,7 @@ extern "C" id native_bridge_metal_open(const char *loader,const char *cache,uint
  class_addProtocol([NBFunction class],@protocol(MTLFunction));class_addProtocol([NBLibrary class],@protocol(MTLLibrary));
  objc_registerClassPair(cls);
  gDeviceObject=[cls new];
+ fillBaseLimits(gDeviceObject);   // 0132: here as well, in case no registration calls initLimits
  return gDeviceObject;
 }
 
