@@ -35,8 +35,8 @@ Only items Claude can move now. User tasks are listed below and never gate work;
    user's decision (Questions). Meanwhile: WebGL speed (games_fps 7 fps, GPU-bound).
 5. **GPU stability**: G1 (no recovery) and G4 (backboardd restart); nightly soak; fix whichever rises (gpu.md).
 6. **Garbled and undrawn images** (B44, B53): Notes attachments, Safari tab thumbnails, Music icon, Maps glitch.
-7. **Upstream takeaways** (2026-11-12, best first; backlog U12-*): keep VkDevice after GPU restart (G4, 1 h), isb in
-   kvtop_wpreflight (0.2 h), fill [device limits] (Photos/B44, 1-2 h), YCbCr sampled in place (video CPU, 6-10 h),
+7. **Upstream takeaways** (2026-11-12, best first; backlog U12-*): keep VkDevice: Turnip 0112 + xnu 0282 built (kernel164,
+   not installed), A/B with sweetgpukill=0 next (gpu.md); isb: xnu 0281 in kernel163 (soak n9 = first boot); fill [device limits] (Photos/B44, 1-2 h), YCbCr sampled in place (video CPU, 6-10 h),
    cheap checks: submit cuts, FS constlen, cold cache, MSAA A/B. Older items: "Upstream" below.
 
 After these: small Metal test apps built here (textured cube with depth, compute), then Crossy Road (Unity), Instagram,
@@ -48,7 +48,7 @@ Listed with exact log lines and rates in [gpu-bugs.md](gpu-bugs.md) (not auto-lo
 stops phone work, or doubles in rate after a change (then turn that change off first).
 
 ## Phone
-The user's since 2026-11-03 20:49 (handed over to play with; ask or wait for "the phone's yours" before phone work). Rebooted for them 2026-11-06 17:07 (user3, same setup).
+Claude's again since 2026-11-12 21:03 (the user). Kernels built tonight: 163 (+0281 isb), 164 (+0282), 165 (+0283 atomic flame-shot).
 Booted user3: kernel162 (= kernel158 + xnu 0277/0278 Venus window, 0279 RPMh fix, 0280 SPMI retry),
 bundle d3316ff (0129 hardware MSAA resolve + 0130 center varyings), venusd 06f9715 (Interactive, 512 MB limit) + vtvenus 331e616 (avc1/hvc1, credit path), wland 206585d
 (HT20, Interactive, bounds checks), camd + hapticd Interactive, cam41. Everyday boot: `tools/sunfish-test.sh -k 162 TAG sweetse9=2 sweetcampmic=2 sweetswapbig=6
@@ -56,10 +56,9 @@ sweetampreset=1 sweetpmemwc=2 sweetgpucap=512`. /var/local/mtl2-env = SWEET_U001
 SWEET_SURF_FLUSH=1, SWEET_CULL=3 (TU_FETCH_GMEM_MIN_DRAWS=20 removed: G8) (tools/sunfish-install-speed.sh); backboardd env CA_DISABLE_LUMA_BOOST=1 CA_FORCE_TIMER=1.
 
 ## Next (in this order)
-0. B62 Safari video picture damaged (decoder bit-exact, cause after decode): leads in video.md 2026-11-03 "state at end
-   of day". Video-only: WebGL, scrolling, home, CC flame-shots are clean (20:45). The credit-path CPU win stands;
-   a correct playing frame has never been confirmed by flame-shot. First: compare a shot with ffmpeg's frame at the
-   same burned-in timecode (the clip has small grey moving shapes too).
+0. B62: very likely a flame-shot artefact (2026-11-12, video.md 22:15: 64 KB read bands = 15 rows, each a correct frame).
+   Confirm: kernel165 (xnu 0283 atomic read) + one playing shot = ffmpeg's frame on every row; then close B62. Separate:
+   video ~3-5 s behind the page clock (latency).
 1. Wi-Fi CPU: userland batching (356c09a) didn't help (bat, 20:40); the per-frame reads + one /dev/wlan write per frame
    dominate: a kernel batched input path is the next step (parked behind the items below).
 2. Video CPU: credit path done (mediaserverd 55 -> 20, venusd 32 -> 10, 0 drops). Left: backboardd ~45 (vImage; bridge 0131
@@ -67,8 +66,7 @@ SWEET_SURF_FLUSH=1, SWEET_CULL=3 (TU_FETCH_GMEM_MIN_DRAWS=20 removed: G8) (tools
 3. Done: launchd Interactive A/B: camd (open 5.7 -> 0.7 s, 30 fps) and hapticd kept; sensors, btbridge cost CPU, reverted.
 4. GPU: suspect link Venus session start → GPU fault (2 of ~5 hangs today); B53 render-server snapshots intermittently
    empty; B50 Maps; WebGL speed (Optimize).
-5. Night soak n9 was cancelled 2026-11-03 20:48 (the user took the phone); run it next night (`tools/sunfish-nightsoak.sh n9`:
-   sets work/night at 21:30, boots kernel162 + everyday args): watch for RPMh timeouts, SPMI retries, GPU hangs.
+5. Night soak n9 running 2026-11-12 (SOAK_KERNEL=163): watch for RPMh timeouts, SPMI retries, GPU hangs.
 
 ## User tasks (details in user-tasks.md; nothing waits on these)
 proximity by hand (U17), battery discharge (U3), headphone plug test (U15), Files check (U13), touch while plugged in (U14).
