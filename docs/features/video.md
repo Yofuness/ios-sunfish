@@ -89,6 +89,20 @@ Switches: VENUSCTL_PRIMARY=1 (linear NV12 on OUTPUT), VENUSCTL_DPB_SETBUF=1, VEN
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
 
+### 2026-11-13 02:15 Traced A/B: bridge 0134 (hardware filter) does not help; the draws are the cost
+n10 boot (kernel167), bundle f7b0c92, 1080p H.264 in Safari inline ~37 s per leg, MESA_GPU_TRACES=print SWEET_PIPESTATS=1.
+| leg | GPU busy | backboardd submits/5 s, mean ms | FB fps | dropped (page) | backboardd CPU |
+| A GPU path (SWEET_YCBCR_GPU=1, 0131 fast), HWFILTER=0 | 93 % | 97-99, 47-48 | 17.4-17.8 | 494/1051 | ~43 % |
+| A2 GPU path, HWFILTER=1 (0134) | 92-93 % | 92-96, 49.0-50.8 | 17.0-18.0 | 514/1105 | ~42 % |
+| B CPU path | 31-34 % | 152-167, 10.3-10.8 | 30.4-31.6 | 48/1111 | ~82 % (with trace overhead) |
+gputrace-sum ms per frame: render_pass A 24.2 / A2 23.0 / B 9.0; compute A 7.1 / A2 6.6 / B 0; dispatches per frame
+1.40 / 1.38 / 0 (confirms an extra conversion on ~40 % of frames); draw_ib_gmem mean 541 / 512 / 198 us. So the ~14 ms
+extra per frame is in the draws, and 0134 changed it by ~1 ms only: either the exact routine was not the cost, or 0134
+did not take effect (unchecked: no "SWEET_YCBCR_HWFILTER mode" line was looked for). A2's largest FS has 1801 instructions
+vs 1031 on B. A2 picture correct (flame-shot vs ffmpeg frame 1291: mean |diff| 2.23). First A attempt: WebKit.GPU SIGSEGV +
+backboardd SIGBUS right after the first "YCBCR FAST" line (boot log 4544.9 / 4546.4 s): a GPU-path crash to look at.
+Files: work/0131-trace/ (tr.A/A2/B.txt traces, win*.log windows, leg.sh). Next: Fable analysis of these traces.
+
 ### 2026-11-13 00:50 Why 0131 cost ~65 ms per frame (read-only analysis of boot 20261103-190010)
 Observed: ONE conversion per backboardd submit ("ycbcr converted" 58-69 vs 68-72 submits per 5 s); per conversion one
 global full barrier + bind + one dispatch, same 8x8 / 120x68 shape and fetch pattern as readbench (0131 fast.rs);
