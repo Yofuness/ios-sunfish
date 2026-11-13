@@ -23,6 +23,17 @@
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
 
+### 2026-11-13 07:20 bt0snoop: btsnoop validated on the phone (kernel167, everyday args, no AirPods action)
+- btbridge d61f019 installed + /var/local/btbridge.snoop; battery 4456 mV; boot rc 0, lock screen at 07:12 (webcam).
+- `btsnoop: /var/local/bt/btsnoop-20261113-071214.log`; file 0600, dir 0700; 125526 B after ~3 min (~2.5 MB/h at idle
+  scanning, so the 256 MiB cap is days away). bluetoothd: no crash/respawn, kctl connected at 28.4 s.
+- Host copy ../logs/bt/bt0snoop-20261113-071214.log (out of git): tshark reads it cleanly: 2391 records, 530 commands
+  (host->controller), 1861 events, 0 ACL, 0 SCO; init order Reset, Read Local Version, Supported Commands, BD_ADDR, Features,
+  Ext Features, LE Features, Set Event Mask, LE Set Event Mask, Write Simple Pairing Mode. 1331 LE Advertising Report
+  frames, 999 with Apple company 0x004C. apple-wireshark (2e98222, research/upstream) loads with `-X lua_script` (aacp +
+  fastconnect). btbridge.log: 411 shim lines (0xfce9/0xfce2 answered locally), one `chip error: op 0x2007 status 0xc`.
+- Open: the AirPods session itself (U-AP1, needs the user's hands); the flag stays on so any connect is recorded.
+
 ### 2026-11-13 07:02 btsnoop capture in btbridge (stage 0)
 - btbridge (phone/wifi/btbridge.c, tag bt-snoop) can write a btsnoop v1 file (datalink 1002, H4 records, flags bit0 = controller->host, bit1 = command/event) of exactly what bluetoothd sees: each whole packet bluetoothd sends (host_input, before the shim answers or forwards it) and each packet written to it (up(): chip-forwarded, shim/lext-synthesized, the watchdog's HCI_Reset answer). The bridge's own chip traffic (bring-up, firmware, watchdog probes) and the dropped 0xedc debug ACL are not in it.
 - Enable: `touch /var/local/btbridge.snoop` on the phone (next btbridge start) -> `/var/local/bt/btsnoop-YYYYMMDD-HHMMSS.log` (dir 0700, file 0600: it holds link keys); or `-S PATH`. Default off (one branch per packet).
