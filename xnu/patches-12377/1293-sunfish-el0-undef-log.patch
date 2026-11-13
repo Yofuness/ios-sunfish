@@ -1,0 +1,153 @@
+From be0f2d27ec8f1acd4c51ee1c3a678e854e788890 Mon Sep 17 00:00:00 2001
+From: Yofuness <compiledchickennuggets@gmail.com>
+Date: Fri, 13 Nov 2026 12:08:14 -0500
+Subject: [PATCH] sunfish: one console line (pc, lr, x16/x17, word,
+ shared-region offset) for each EL0 SIGILL after the emulator and for pid 1's
+ fatal aborts; sweetundeflog=0 turns it off (1293)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ osfmk/arm64/sleh.c | 78 ++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 78 insertions(+)
+
+diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
+index c120dbf..2b441bc 100644
+--- a/osfmk/arm64/sleh.c
++++ b/osfmk/arm64/sleh.c
+@@ -65,6 +65,9 @@
+ #include <vm/vm_fault.h>
+ #include <vm/vm_kern.h>
+ #include <vm/vm_map_xnu.h>
++#if defined(SWEET)
++#include <vm/vm_shared_region_xnu.h> /* 1293 */
++#endif
+ 
+ #include <sys/errno.h>
+ #include <sys/kdebug.h>
+@@ -1141,6 +1144,61 @@ sweet_emulate_user_arm64(arm_context_t *context)
+ 
+ 	return false;
+ }
++
++/*
++ * 1293: one console line for each EL0 exception that ends in SIGILL (after the emulator declined it) and for
++ * pid 1's fatal aborts: pc, lr, x16/x17, the faulting word and its offset in the shared region (minus the
++ * slide = offset in the cache). First 64 per boot, always for pid 1. Boot-arg sweetundeflog=0 turns it off.
++ */
++extern char *proc_name_address(void *p);
++
++static void
++sweet_undef_log(arm_saved_state_t *state, uint64_t esr, uint64_t far, bool is_abort)
++{
++	static int sweet_undef_on = -1;
++	static uint32_t sweet_undef_count = 0;
++
++	if (__improbable(sweet_undef_on < 0)) {
++		int on = 1;
++		PE_parse_boot_argn("sweetundeflog", &on, sizeof(on));
++		sweet_undef_on = on;
++	}
++	if (!sweet_undef_on || !is_saved_state64(state) || !PSR64_IS_USER64(get_saved_state_cpsr(state))) {
++		return;
++	}
++
++	task_t task = current_task();
++	int pid = task_pid(task);
++	if (pid != 1 && (is_abort || os_atomic_inc_orig(&sweet_undef_count, relaxed) >= 64U)) {
++		return;
++	}
++
++	arm_saved_state64_t *ss = saved_state64(state);
++	uint32_t word = 0xdeadbeefU;
++	if (copyin((user_addr_t)sweet_emu_tbi_uaddr(ss->pc), (char *)&word, sizeof(word)) != 0) {
++		word = 0xdeadbeefU;
++	}
++
++	uint64_t sr_off = 0;
++	uint32_t slide = 0;
++	vm_shared_region_t sr = vm_shared_region_get(task);
++	if (sr != NULL) {
++		uint64_t pc = sweet_emu_tbi_uaddr(ss->pc);
++		if (pc >= sr->sr_base_address && pc - sr->sr_base_address < sr->sr_size) {
++			sr_off = pc - sr->sr_base_address;
++			slide = sr->sr_slide;
++		}
++		vm_shared_region_deallocate(sr);
++	}
++
++	void *proc = get_bsdtask_info(task);
++	printf("sweet-undef: pid %d (%s) esr 0x%x ec 0x%x pc 0x%llx lr 0x%llx word 0x%08x sr_off 0x%llx "
++	    "slide 0x%x x16 0x%llx x17 0x%llx%s far 0x%llx\n",
++	    pid, proc ? proc_name_address(proc) : "?", (uint32_t)esr, (uint32_t)ESR_EC(esr),
++	    (unsigned long long)ss->pc, (unsigned long long)ss->lr, word, (unsigned long long)sr_off, slide,
++	    (unsigned long long)ss->x[16], (unsigned long long)ss->x[17], is_abort ? " abort" : "",
++	    (unsigned long long)far);
++}
+ #endif /* defined(SWEET) */
+ 
+ 
+@@ -1929,6 +1987,7 @@ sleh_synchronous(arm_context_t *context, uint64_t esr, vm_offset_t far, __unused
+ 		if (is_user && sweet_emulate_user_arm64(context)) {
+ 			break;
+ 		}
++		sweet_undef_log(state, esr, far, false); /* 1293 */
+ #endif
+ 		handle_msr_trap(state, esr);
+ 		break;
+@@ -1994,6 +2053,9 @@ sleh_synchronous(arm_context_t *context, uint64_t esr, vm_offset_t far, __unused
+ 		if (is_user && sweet_emulate_user_arm64(context)) {
+ 			break;
+ 		}
++		if (is_user) {
++			sweet_undef_log(state, esr, far, false); /* 1293 */
++		}
+ #endif
+ 		handle_uncategorized(&context->ss);
+ 		break;
+@@ -2066,6 +2128,11 @@ sleh_synchronous(arm_context_t *context, uint64_t esr, vm_offset_t far, __unused
+ 		__builtin_unreachable();
+ 
+ 	case ESR_EC_TRAP_SIMD_FP:
++#if defined(SWEET)
++		if (is_user) {
++			sweet_undef_log(state, esr, far, false); /* 1293 */
++		}
++#endif
+ 		handle_simd_trap(state, esr);
+ 		__builtin_unreachable();
+ 
+@@ -2084,6 +2151,9 @@ sleh_synchronous(arm_context_t *context, uint64_t esr, vm_offset_t far, __unused
+ 
+ 	case ESR_EC_WFI_WFE:
+ 		// Use of WFI or WFE instruction when they have been disabled for EL0
++#if defined(SWEET)
++		sweet_undef_log(state, esr, far, false); /* 1293 */
++#endif
+ 		handle_wf_trap(state);
+ 		__builtin_unreachable();
+ 
+@@ -2100,6 +2170,11 @@ sleh_synchronous(arm_context_t *context, uint64_t esr, vm_offset_t far, __unused
+ 		__builtin_unreachable();
+ 
+ 	default:
++#if defined(SWEET)
++		if (is_user) {
++			sweet_undef_log(state, esr, far, false); /* 1293 */
++		}
++#endif
+ 		handle_uncategorized(state);
+ 	}
+ 
+@@ -3057,6 +3132,9 @@ handle_user_abort(arm_saved_state_t *state, uint64_t esr, vm_offset_t fault_addr
+ #endif
+ 
+ 	codes[1] = fault_addr;
++#if defined(SWEET)
++	sweet_undef_log(state, esr, fault_addr, true); /* 1293: pid 1 only */
++#endif
+ #if __has_feature(ptrauth_calls)
+ 	bool is_data_abort = (ESR_EC(esr) == ESR_EC_DABORT_EL0);
+ 	if (user_fault_matches_pac_error_code(fault_addr, get_saved_state_pc(state), is_data_abort)) {
+-- 
+2.56.0
+

@@ -35,6 +35,12 @@ New patches (1290+):
   still 6 GiB). 27.2.1's cache ends at 0x327948000 with its max slide (0x187948000 + 0x20000000), 26.6.2's at 0x2e1574000.
   The user VA limit follows (ARM64_MIN_MAX_ADDRESS +2 GiB: device-large max 0x4d8000000). `sweetsr27=0` creates 6 GiB
   regions again (the VA limit stays raised).
+- `1293` EL0 undef log: one console `printf` line `sweet-undef: pid N (name) esr .. ec .. pc .. lr .. word .. sr_off ..
+  slide .. x16 .. x17 ..[ abort] far ..` for each EL0 exception that ends in SIGILL after the emulator declined it
+  (uncategorized, MSR trap, SIMD trap, WFI/WFE, and the default case, which on this non-ptrauth kernel also catches
+  EC 0x1C FPAC), and for pid 1's aborts just before EXC_BAD_ACCESS is delivered. `word` = the instruction at pc
+  (0xdeadbeef if unreadable), `sr_off` = pc - shared region base (0 outside it; cache offset = sr_off - slide). First 64
+  per boot, pid 1 always; `sweetundeflog=0` turns it off.
 - No patch needed for iOS 27's CPU-feature checks: DIT, SB, SHA512, SHA3, JSCVT, FCMA commpage bits and their
   hw.optional.arm.FEAT_* sysctls come from the ID registers of the boot CPU (an A55) in osfmk/arm/commpage/commpage.c;
   A55/A76 lack all six (GUESS from the Arm TRM values; check `sysctl hw.optional` on the first 12377 boot); commpage 0x10c is zeroed and unwritten; the user timebase type is USER_TIMEBASE_SPEC (CNTVCT, not
@@ -106,6 +112,7 @@ Checked 2026-11-13 (no build): the whole series applies from scratch on ac9718f 
 147 ours; the result's tree hash equals `sunfish-12377` HEAD), no new whitespace errors in our patches. Re-checked with
 1290/1291 (149 ours, in a temporary index from the `stage:` commit c3a78d5 + 089e3fb's header): tree hash equals HEAD.
 Re-checked with 1292 (150 ours, same method): tree hash d7c5c63 equals the tree with 1292's edits (uncommitted at check time).
+Re-checked with 1293 (151 ours, same method): tree hash f75d960 equals `sunfish-12377` HEAD be0f2d2, no whitespace errors.
 
 Differences from Hot's CI kept on purpose: dxb 6639065 instead of bd88697 (it adds `define_esr_ec_pac_fail_unconditionally`
 and `guard_sptm_user_pointer_ops_with_pac`, both apply under the series), Xcode 26.1 instead of runner's Xcode 26.x.
