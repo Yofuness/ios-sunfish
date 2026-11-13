@@ -1,8 +1,8 @@
 # iOS 26 / 27 port (arm64e userland on a non-PAC SM7150)
 
 **State:** 🔬 Gate A passed for both roots (2026-11-13); root = iOS 27.2.1 (24B156; its dyld proves with 3 prover fixes). Kernel series
-xnu/patches-12377 assembled (IOS-26-Hot base), not built; build VM (Sequoia + Xcode 26.1) being installed; stage 0 btsnoop
-done. **Updated:** 2026-11-13.
+**Gate B passed**: kernel301 (xnu-12377.121.6 + xnu/patches-12377, 147 patches) builds in the Sequoia VM (Xcode 26.1);
+not booted yet. Stage 0 btsnoop done. **Updated:** 2026-11-13.
 
 ## Facts
 - Goal (the user, 2026-11-13): LibrePods development needs a current iOS host; target iOS 27, iOS 26 first if better.
@@ -17,6 +17,17 @@ done. **Updated:** 2026-11-13.
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 10:05 GATE B PASSED: kernel301 builds (Sequoia VM, builder)
+- `VM_DIR=~/VMs/macos15 MACOS_VERSION=26.5 XC=/Applications/Xcode_26.1.app PATCH_DIR=xnu/patches-12377 KDK_MODE=fake
+  tools/vm-build-xnu.sh 301 --clean` (8b64b9d: 26.x mirrors IOS-26-Hot's CI, dxb bd88697): exit 0, 372 s (patch stage 6 s,
+  make 347 s). 7 stage scripts ran, 147/147 of our patches applied; dxb applied add_iboot_header +
+  dsymutil_no_process_substitution (link_kdk, disable_bti_vmapple, remove_applefeatures_include, simplify_san_lipo not
+  logged: skipped as in Hot's CI, not verified).
+- Root cause of try 1's 0004 failure (OBS, host repro): dxb 6639065's patches() sed rewrites INCFLAGS_SDK (MakeInc.def:1227,
+  four-space indent) before our patches; bd88697's tab-only sed leaves it and 0004 adds the FAKEROOT include itself.
+- work/kernel301/kernel.development.sweet: 21254232 bytes, Mach-O arm64 PIE, "Darwin Kernel Version 25.5.0 ...
+  DEVELOPMENT_ARM64_SWEET". Not booted. Next: Gate C (RAM boot to serial launchd); first boots need sweetgpu=0 sweetmtl=0.
+
 ### 2026-11-13 09:45 Gate B try 1 (Sequoia VM, builder): FAILED on build plumbing, no kernel
 - VM: macOS 15.8.3 24H241, Xcode 26.1 17B55, iOS 26.1 SDK (~/VMs/macos15, 42 GB; 1.5 h install). Network OK in the VM.
 - kernel300 (stock, MACHINE_CONFIG=VMAPPLE, stage scripts only): make ran 2508 s, then `TrustCache/API.h` and

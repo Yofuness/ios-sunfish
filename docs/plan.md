@@ -26,8 +26,8 @@ bootable until iOS 26/27 is daily-usable (every boot is RAM-only; never flash).
    ("glizzy") pairing test with btsnoop on; flag /var/local/btbridge.snoop off afterwards.
 1. ▶ **Build host** (1-1.5 d): scripts DONE (9854602, kernel167 byte-identical); parameterise tools/vm-build-xnu.sh + tools/macos-vm/* (VM_DIR, MACOS_VERSION, XC, PATCH_DIR,
    KDK_MODE=fake), guard against a second live VM; then a second VM `~/VMs/macos15` (DONE 2026-11-13: Sequoia 15.8.3 24H241 + Xcode 26.1 17B55 + iOS 26.1 SDK, 42 GB).
-   Xcode 26.1 is on disk: ../restore/xcode/Xcode_26.1_Universal.xip (the user, 2026-11-13 06:55). **Gate B:** stock
-   xnu-12377.121.6 DEVELOPMENT links (VMAPPLE smoke test, then SWEET).
+   Xcode 26.1 is on disk: ../restore/xcode/Xcode_26.1_Universal.xip (the user, 2026-11-13 06:55). **Gate B: PASSED** 2026-11-13
+   10:05: kernel301 = xnu-12377.121.6 + xnu/patches-12377 links (372 s; VMAPPLE smoke dropped).
 2. **Donor census**: DONE. Gate A PASSED both (research/notes/donor-census-2026-11-13.md). **Root: 27.2.1 (24B156)**:
    its dyld/CoreText prove with 3 prover fixes (TPRO words, unowned stub islands, noreturn at section end; 3,583 -> 1
    unproven = the same libsystem_m constant as 26; research/notes/dyld27-proof-2026-11-13.md). Kernel must hide
@@ -51,7 +51,8 @@ when 27's census is clean. xnu-13 source appearing changes nothing before Gate E
 ## Next (in this order; a fresh /loop session starts here)
 1. Stage 0 btsnoop (implementer for btbridge, builder, one phone-runner boot). 2. Stage 2 census in parallel (one
 investigator; both IPSWs are on disk, sha1 verified; extracted files under ../restore/ipsw/x/, out of git).
-3. Stage 1: Gate B in ~/VMs/macos15 (VMAPPLE stock smoke, then SWEET with xnu/patches-12377).
+3. Gate C: kernel301 RAM boot (sweetgpu=0 sweetmtl=0), first with no root change; then the 27.2.1 root (stage 4:
+   full-cache prover run, rewrite, HFSX region).
 4. Done 2026-11-13 07:20: gpu15e: 4 video tabs no longer crash; SWEET_YCBCR_GPU=1 default again (video.md). iOS 16 parked.
 
 ## Phone
