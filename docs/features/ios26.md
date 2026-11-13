@@ -17,6 +17,20 @@ stage 0 (iOS 16 btsnoop) next. **Updated:** 2026-11-13.
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 08:20 Stage 3 rebase map (one Fable investigator, read-only; research/notes/rebase-map-12377-2026-11-13.md)
+- Base CHANGED (OBS): IOS-26-Hot `xnu/patches-26` (dipa-studio, MIT; the ios-sweet author's own port of the whole sweet +
+  flame 0003-0124 to xnu-12377.121.6, MACOS_VERSION 26.5) applies 116/116 clean on 12377 (+ its stage scripts 0000
+  CoreEntitlements V2 without KDK, 0001 TrustCache, libpthread/hfs/IOHIDFamily-2238 pins), plus an iOS 26 generic layer
+  0129-0142 (arm64e exec/shared region, sleh PAC emulator, build fixes, IOMFB swap, IOSurface ABI), 0145 apple80211, 0148
+  keystore. Scion's xnu-12377-starlte branch only carries 56 Apple-file halves of ios-sweet 0003-0080: second opinion, not base.
+- Our copies of 0086/0089 hide two sunfish edits Hot lacks (cluster table A55x6/A76x2, SWEET_MIRROR_PA 0x1fa000000) +
+  SWEET.h BTI_ENFORCED 0: to re-add. Obsolete on 26: our 0001/0002 (Xcode 15 clang), 0005, 0082.
+- Our 0125-0285 on Hot base + UniXNU darwin26-syscalls (BSD-2-Clause-Patent, clean): 143 clean, 6 fuzz, 11 conflict
+  (cpufreq chain 0255 cascade ~7 h; HID/motion 0228/0243/0245 on Hot's 160-byte HID ~14 h; Hot-layer merges 8-14 h).
+  0160 = 11 real lines (IOMFB log) + the vendored 8796 iokit tree: re-add by hand. GUESS: 3-5 days mechanical, 7-12 to Gate C.
+- Next: xnu/patches-12377 assembled for Gate C (Hot 0000-0124 + 3 sunfish edits + Hot 0129-0142 subset + 0199 syscalls +
+  20 sunfish patches renumbered +1000), implementer running.
+
 ### 2026-11-13 07:45 Stage 1 build host: scripts, regression build, Sequoia VM prep; stage 2 inputs
 - VM scripts take VM_DIR, VM_INSTALL_IMG, OSX_KVM_DIR, VM_MEM/CPUS/SSH_PORT/VNC, VM_PIN_FIRST, MACOS_VERSION, XC,
   PATCH_DIR, KDK_MODE=kdk|fake (9854602 + VM_INSTALL_IMG); vm-guard.sh refuses a second live VM (test: a fake sibling

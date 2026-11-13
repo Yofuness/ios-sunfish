@@ -32,7 +32,7 @@ bootable until iOS 26/27 is daily-usable (every boot is RAM-only; never flash).
    (PAC, FJCVTZS/FCMA/LRCPC2/CSSC/MOPS/BF16 counts), strings of bluetoothd/BlueTool/audioaccessoryd (BT_HCI_TRANSPORT,
    com.apple.uart.bluetooth, .sk.bluetooth, bcm_vsc). **Gate A:** no unguarded ISA beyond PAC+FJCVTZS+FCMA(+BF16/I8MM/SHA3)
    in hot code and a POSIX H4 transport path exists. Root: 27.2.1 if as clean as 26.6.2, else 26.6.2.
-3. **Kernel rebase** (7-12 d): Scion's ios-sweet layer on 12377 (MIT) as base, UniXNU's 8-syscall patch, our 0125-0285
+3. **Kernel rebase** (7-12 d): base = IOS-26-Hot xnu/patches-26 (MIT, 116/116 clean on 12377; rebase map 2026-11-13) [was: Scion's layer], UniXNU's 8-syscall patch, our 0125-0285
    without 0160's vendored tree, PAC layer (zeta plain-auth + an EL0 emulator), GiaSen facts re-implemented (no licence:
    ideas only). New tree work/src/xnu-12377, patches xnu/patches-12377/. **Gate C:** RAM-booted kernel reaches serial
    launchd, then SSH over USB-ECM, on a rewritten root in its own region; iOS 16 still boots.
