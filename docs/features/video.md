@@ -89,6 +89,20 @@ Switches: VENUSCTL_PRIMARY=1 (linear NV12 on OUTPUT), VENUSCTL_DPB_SETBUF=1, VEN
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
 
+### 2026-11-12 22:15 B62 is very likely a flame-shot capture artefact (Fable forensics on b62a shots); correction to 21:10
+Every 15-row band of the video area in the b62a shots is an exact, undisplaced copy (dx=dy=0, SAD < 3) of ONE real
+clip frame, and that frame rises monotonically top to bottom: mp4-1 419 -> 534, mp4-2 1000 -> 1116, mp4-3 1489 -> 1543,
+hls-1 805 -> 868, hls-3 1709 -> 1761 (observed). Band starts sit at framebuffer rows ceil(k*65536/4352) (64 KB of the
+4352-byte stride; max error 1 row over 19 boundaries), the same for 720p and 1080p clips. A composite built from the
+matched frame per band reproduces the shot: mean |diff| 1.5-1.7 vs 6.6-9.5 for the counter frame. So flame-shot reads
+the framebuffer in 64 KB pieces over 2-8 s and moving content tears into 15-row bands from different moments; static
+parts look right because they don't change. The "wrong angle" diagonal pieces and the striped grey blob are bands from
+frames 20-115 later (testsrc2's moving line/cross). The 2026-11-03 "grey rows at fixed screen positions" fit the same
+artefact (guess). Video lags the page clock by ~3-5 s (page beacons vs bands, +-1 s, observed): a separate latency item.
+Judge: capture artefact ~95 %; no atomic playing shot exists yet. Next: xnu 0283 (file server reads ranges <= 16 MB in
+one go before sending) -> one playing shot must match ffmpeg's frame at the burned counter on every row.
+Work files: work/b62-forensics/image-forensics/ (rowprofile.py, composites, band tables).
+
 ### 2026-11-12 21:10 B62 is real (b62a): every shot differs from ffmpeg at the same burned-in frame number
 kernel162 everyday args, bundle d3316ff, venusd used (session 8: 1800 AUs, 1800 frames, 30.0 fps). Page video `muted`.
 Compared 5 shots side by side with ffmpeg's frame at the burned-in frame number (and ±2): h264-720p.mp4 frames 419, 1000,
