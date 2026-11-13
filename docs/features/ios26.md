@@ -17,6 +17,15 @@ CPUs, UFS, HFS root mounted read-only, launchd exec'd (k301b); iOS 16's launchd 
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 12:45 k304a: launchd 27's SIGILL = `msr tco, #1` in the MTE variant of strncmp
+- kernel304 (1293 sweet-undef log). OBS (../logs/k304/k304a-rescue.txt): `sweet-undef: pid 1 (launchd) esr 0x2000000 ec 0x0 pc
+  0x19dec88ac lr 0x19952c258 word 0xd503419f sr_off 0x1dec88ac slide 0x116a8000`. Unslid 0x18c8208ac =
+  `__platform_strncmp$VARIANT$MTE+60` (libsystem_platform), word = `msr tco, #1` (MTE; neither the A76/A55 nor the A13 have
+  MTE); caller libsystem_c `___guard_setup+88`. The `__platform_strncmp` dispatcher picks the MTE variant when bit 2 of the
+  `___security_config` byte is set (`_os_security_config_get`). So our kernel hands launchd a security config with MTE on.
+- Next: patch 1294 (find the writer of ___security_config, clear the MTE bits in what the kernel provides; emulate msr/mrs
+  TCO as a fallback).
+
 ### 2026-11-13 12:10 k303a: dyld cache MAPS (1292); launchd 27 then dies on SIGILL
 - kernel303 (1292: 8 GiB shared region), same cmdline as k302b. OBS (../logs/k303/k303a-rescue.txt; the live log missed
   this boot): 25.461 exec launchd; libignition "hello from launchd.1"; 80 "not in trust cache" warnings; 25.750
