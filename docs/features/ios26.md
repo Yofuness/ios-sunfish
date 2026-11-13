@@ -17,6 +17,18 @@ CPUs, UFS, HFS root mounted read-only, launchd exec'd (k301b); iOS 16's launchd 
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 12:00 k302b: LAUNCHD 27 RUNS on the phone (27.2.1 root on ufsroot1, rw); dies on the shared-cache map
+- `rd=ufsroot1 ufsrw=1 rootrw=1 launchd_unsecure_cache=1 ignition_level=1 cs_integrity_skip=1 -v sweetgpu=0 sweetmtl=0`
+  (kernel302, sunfish-26.adt, 4456 mV). OBS (../logs/k302/k302b-rescue.txt, boots/20261113-114816.log): 28.597 hfs journal
+  created; 29.962 "hfs: mounted iOSRoot on device b(1, 1)"; 29.974 exec launchd (the PAC-rewritten 27.2.1 launchd runs);
+  libignition "Darwin Ignition Sequence Version 1.0.0 ... RELEASE_ARM64E", "opened shared cache directory"; 29.081 USB-ECM up.
+- 30.241 "map(...'dyld_shared_cache_arm64e'): not in trust cache" for all 80 files (vm_unix.c:1634: only a warning, it falls
+  back to the root-owner check); 30.257 "mapping[1]: address 0x2f5b64000 size 0x2976c000 ... failed 0x1" -> dyld "syscall to
+  map cache into shared region failed" -> "Library not loaded: /usr/lib/libSystem.B.dylib" -> pid 1 exit -> panic 30.3 s.
+- Cause (OBS source + arithmetic): 12377's SHARED_REGION_BASE/SIZE_ARM64 = 0x180000000/0x180000000 (ends 0x300000000,
+  osfmk/mach/shared_region.h:90-91); mapping[1] ends at 0x31f2d0000. The 27 cache needs a larger shared region (xnu-13432).
+  No SIGILL, EXC_GUARD or signature errors seen. iOS 16 back (sweetnofstab=1).
+
 ### 2026-11-13 11:55 27.2.1 C1 root written to ufsroot1; k302a: root mount fails (journal create on a read-only device)
 - Write (the user's OK 10:55; /var backup first): `fastboot -S 256M flash userdata ../restore/root27/root27-c1-at16g.simg`
   (-S 512M refused: max-download-size 0x10000000), 43 chunks OKAY, 660 s; first chunk 16 GiB DONT_CARE, output ends at
