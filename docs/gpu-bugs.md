@@ -273,6 +273,13 @@ Newest first. Earlier soaks were shorter or used other loads, so compare rates, 
 | 2026-10-31 z1 | kernel135, allocator | ~34 min, stopped early | 151 k | 0 | 3 | 2 | - |
 | 2026-10-31 soak1 | kernel134, allocator | 2 boots | ~113 k | 2 | at least 1 | not counted | - |
 
+### 2026-11-13 05:50 0114 fixed (1d7338e) on the phone: forced refusals OK, but far 0x1b20 still crashes under real OOM
+t167zb, boot 20261113-051618. SWEET_CS_FAIL_TEST=20 (MESA_LOG_FILE was not created; lines read from backboardd's
+stderr "TU: error: sweet 0114"): 26 forced refusals in backboardd (cmd cs 6, draw cs 9, draw sub cs 9, tile store 2),
+0 "skipping" lines, 0 G1/G2/G4, page 1800 frames / 193 dropped (all in the first 12 s). One SpringBoard SIGSEGV far 0
+pc 0x1d3ba1c64 at [129.223], 1 s after the first forced refusal and near a backboardd restart (cause open). 4 video
+tabs (GPU path): WebKit.GPU SIGSEGV far 0x1b20 pc 0x11d334f08 [544.226] again. Second site being symbolicated.
+
 ### 2026-11-13 05:10 B64 crash site: a bug in 0114 itself (cs->device zeroed), fix being written
 Investigator (observed): pc 0x11bf8fe68 = libvulkan_freedreno+0xdfe68 in tu6_emit_rast<A6XX> (+0x2b4), `ldr x10,[x19,#0x28]`
 (cs->device) then `ldr x10,[x10,#0x1b20]` (->physical_device, tu_pipeline.cc:3539): cs->device == NULL. Backtrace

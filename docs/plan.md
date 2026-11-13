@@ -26,9 +26,9 @@ Only items Claude can move now. User tasks are listed below and never gate work;
    2. Done 2026-11-03: firmware boots, H.264 session opens/closes; 10/10 rounds idle, 29/29 under 15 min UI load (s7c).
    3. Done 2026-11-03 (v3e): `venusctl decode` bit-exact vs ffmpeg at 320x240 and 1280x720. Left: speed on a long clip.
    4. ▶ Done 2026-11-03: 4a venusd, 4b VT plugin, 4c Safari H.264 via Venus, venusd at boot + recovery. 2026-11-12: picture
-      right (B62 was the flame-shot), no lag, start gap ~0.5 s. 4d: done 2026-11-13: GPU path is the default
-      (SWEET_YCBCR_GPU=1 via install-speed; 15 min 1080p 14/24239 dropped, backboardd ~20 %; 720p/HEVC/camera ok). Left: B64
-      (4 video tabs: GPU pool OOM -> WebKit.GPU crash), B63 (camera mediaserverd 500-600 %). 4e HEVC.
+      right (B62 was the flame-shot), no lag, start gap ~0.5 s. 4d: GPU path works (15 min 1080p 14/24239
+      dropped, backboardd ~20 %) but back to opt-in 05:50: 4 video tabs exhaust the pool (B65, Rgba16f + staging; fix being
+      written) and crash WebKit.GPU (B64, 0114 site 2). Default again once both are fixed. B63 camera CPU. 4e HEVC.
    5. Tuning: heat, 4K, several streams at once (feeds).
 2. **3D**: done 2026-11-03: three.js games_fps (WebGL 2) 15 min, 0 hangs (7.4 fps). Left: speed.
 3. **Wi-Fi throughput** (B57): 0.53 -> 3.0 (Interactive) -> 5.8 MB/s (HT20, ht1) on 2026-11-03. Next: wland's CPU
@@ -50,17 +50,17 @@ Listed with exact log lines and rates in [gpu-bugs.md](gpu-bugs.md) (not auto-lo
 stops phone work, or doubles in rate after a change (then turn that change off first).
 
 ## Phone
-Claude's since 2026-11-12 21:03 (the user). Booted t167z (2026-11-13 04:30): kernel167 (= kernel162 + xnu 0281 isb, 0282 GetStatus NotReady after a
+Claude's since 2026-11-12 21:03 (the user). Booted t167zb (2026-11-13 05:16): kernel167 (= kernel162 + xnu 0281 isb, 0282 GetStatus NotReady after a
 failed recovery, 0283 atomic flame-shot, 0284 G2 submit logging, 0285 lost span), bundle c916fe4+ (+ Turnip 0112 keep VkDevice, 0113 G2 fix,
 frontend 0132 device limits, 0135 snapshot sync, 0136, bridge 0133 restart redo, 0134, Turnip 0114 CS OOM sink), venusd/vtvenus 6a24d64 (stall detectors, VT QoS), wland 206585d
 (HT20, Interactive, bounds checks), camd + hapticd Interactive, cam41. Everyday boot: `tools/sunfish-test.sh -k 167 TAG sweetse9=2 sweetcampmic=2 sweetswapbig=6
 sweetampreset=1 sweetpmemwc=2 sweetgpucap=512 sweetgpukill=0` (sweetgpukill=0 since 2026-11-12: backboardd survives recovered hangs with 0112; t166z was booted without it). /var/local/mtl2-env = SWEET_U0011..14=1,
-SWEET_SURF_FLUSH=1, SWEET_CULL=3, SWEET_YCBCR_GPU=1 (TU_FETCH_GMEM_MIN_DRAWS=20 removed: G8) (tools/sunfish-install-speed.sh); backboardd env CA_DISABLE_LUMA_BOOST=1 CA_FORCE_TIMER=1.
+SWEET_SURF_FLUSH=1, SWEET_CULL=3 (SWEET_YCBCR_GPU=1 opt-in; TU_FETCH_GMEM_MIN_DRAWS=20 removed: G8) (tools/sunfish-install-speed.sh); backboardd env CA_DISABLE_LUMA_BOOST=1 CA_FORCE_TIMER=1.
 
 ## Next (in this order)
-0. 2026-11-13 05:00: a) done: GPU video path default (video.md 05:00). b) G2: Turnip 0113 installed, watch soaks for
-   "submit bad". c) B53 mostly works (disk cache; gpu.md 04:55). d) Turnip 0114 installed (t167z): forced refusals don't
-   crash; B64 = new OOM crash site with 4 video tabs (A/B + analysis running). e) Night soak tonight on kernel167 + 0114.
+0. 2026-11-13 05:50: a) GPU video path opt-in again until B65 + B64 are fixed (video.md 05:50). b) G2: Turnip 0113 installed, watch soaks for
+   "submit bad". c) B53 mostly works (disk cache; gpu.md 04:55). d) Turnip 0114 (fixed 1d7338e) installed t167zb: forced
+   refusals OK; a second far 0x1b20 site under real OOM (B64, being symbolicated). e) Night soak tonight on kernel167 + 0114.
 1. Wi-Fi CPU: userland batching (356c09a) didn't help (bat, 20:40); the per-frame reads + one /dev/wlan write per frame
    dominate: a kernel batched input path is the next step (parked behind the items below).
 2. Video CPU: credit path done (mediaserverd 55 -> 20, venusd 32 -> 10, 0 drops). Left: backboardd ~45 (vImage; bridge 0131

@@ -182,3 +182,5 @@ output in /var/local.
 2026-11-13 04:30: Metal bundle with Turnip 0114 (CS allocation failure sink + SWEET_CS_FAIL_TEST knob, e0469d3) installed via `tools/sunfish-metal2-install.sh work/metal2-linux/out/phone/metal2/out --no-restart`, reboot t167z. Off: SWEET_CS_FAIL_SINK=0 in mtl2-env.
 2026-11-13 04:35-04:55: mtl2-env test edits (SWEET_YCBCR_GPU removed/restored for the camera A/B; SWEET_CS_FAIL_TEST=50 and MESA_LOG_FILE=/var/local/mesa0114.log added then removed, the log file deleted). End state: SWEET_U0011..14=1, SWEET_SURF_FLUSH=1, SWEET_CULL=3, SWEET_YCBCR_GPU=1.
 2026-11-13 05:00: SWEET_YCBCR_GPU=1 made the default: tools/sunfish-install-speed.sh now writes it (off: delete the line). The phone already has it (no run needed).
+2026-11-13 05:16: bundle with Turnip 0114 fixed (1d7338e, dylib md5 203a4836...) installed via `tools/sunfish-metal2-install.sh work/metal2-linux/out/phone/metal2/out --no-restart`, reboot t167zb.
+2026-11-13 05:50: SWEET_YCBCR_GPU=1 removed from /var/local/mtl2-env (ssh sed) and from tools/sunfish-install-speed.sh: GPU video path opt-in again (video.md 05:50).
