@@ -1,0 +1,214 @@
+From 09673bfad397f3fc3bf7af4251eb8c47e68257b9 Mon Sep 17 00:00:00 2001
+From: Yofuness <compiledchickennuggets@gmail.com>
+Date: Fri, 13 Nov 2026 12:46:02 -0500
+Subject: [PATCH] sunfish: EL0 emulator runs MTE tag instructions with tags
+ ignored (LDG/IRG/ADDG/SUBG/GMI/SUBP(S)/STG/ST2G/STZG/STZ2G/STGP); sweetnomte
+ bit 3 (default 15) turns it off (1296)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ osfmk/arm64/sleh.c | 130 +++++++++++++++++++++++++++++++++++++++++----
+ 1 file changed, 121 insertions(+), 9 deletions(-)
+
+diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
+index 31ce7f6..d6aa608 100644
+--- a/osfmk/arm64/sleh.c
++++ b/osfmk/arm64/sleh.c
+@@ -197,6 +197,7 @@ enum sweet_emu_cat {
+ 	SWEET_EMU_SHA3,
+ 	SWEET_EMU_TPRO,         /* 1291 */
+ 	SWEET_EMU_TCO,          /* 1294 */
++	SWEET_EMU_MTE,          /* 1296 */
+ 	SWEET_EMU_CAT_COUNT
+ };
+ 
+@@ -218,6 +219,7 @@ static const char *const sweet_emu_cat_names[SWEET_EMU_CAT_COUNT] = {
+ 	"sha3",
+ 	"tpro",
+ 	"tco",
++	"mte",
+ };
+ 
+ static inline void
+@@ -233,7 +235,7 @@ sweet_emu_record(enum sweet_emu_cat cat, uint64_t pc, uint32_t insn)
+ 	} else if (__improbable(((prev_tot + 1ULL) & 0xFFFFFULL) == 0)) {
+ 		printf("SWEET EMU: total=%llu pac_ret=%llu pac_br=%llu sign_auth=%llu "
+ 		    "strip=%llu pacga=%llu ldraa=%llu jscvt=%llu fcma=%llu "
+-		    "lrcpc2=%llu flagm_dit=%llu sha3=%llu tpro=%llu tco=%llu\n",
++		    "lrcpc2=%llu flagm_dit=%llu sha3=%llu tpro=%llu tco=%llu mte=%llu\n",
+ 		    (unsigned long long)(prev_tot + 1ULL),
+ 		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_PAC_RET], relaxed),
+ 		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_PAC_BR], relaxed),
+@@ -247,7 +249,8 @@ sweet_emu_record(enum sweet_emu_cat cat, uint64_t pc, uint32_t insn)
+ 		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_FLAGM_DIT], relaxed),
+ 		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_SHA3], relaxed),
+ 		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_TPRO], relaxed),
+-		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_TCO], relaxed));
++		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_TCO], relaxed),
++		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_MTE], relaxed));
+ 	}
+ }
+ 
+@@ -257,7 +260,7 @@ sweet_emu_format_stats(char *buf, size_t buflen)
+ 	int n = snprintf(buf, buflen,
+ 	    "total=%llu pac_ret=%llu pac_br=%llu pac_sign_auth=%llu "
+ 	    "pac_strip=%llu pacga=%llu ldraa=%llu jscvt=%llu fcma=%llu "
+-	    "lrcpc2=%llu flagm_dit=%llu sha3=%llu tpro=%llu tco=%llu",
++	    "lrcpc2=%llu flagm_dit=%llu sha3=%llu tpro=%llu tco=%llu mte=%llu",
+ 	    (unsigned long long)os_atomic_load(&sweet_emu_total, relaxed),
+ 	    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_PAC_RET], relaxed),
+ 	    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_PAC_BR], relaxed),
+@@ -271,7 +274,8 @@ sweet_emu_format_stats(char *buf, size_t buflen)
+ 	    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_FLAGM_DIT], relaxed),
+ 	    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_SHA3], relaxed),
+ 		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_TPRO], relaxed),
+-		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_TCO], relaxed));
++		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_TCO], relaxed),
++		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_MTE], relaxed));
+ 	if (n < 0) {
+ 		return 0;
+ 	}
+@@ -631,6 +635,109 @@ sweet_fcmla_lane_f16(uint16_t acc, uint16_t x, uint16_t y, bool neg_prod)
+ 	    sweet_f16_to_f32(x), sweet_f16_to_f32(y)));
+ }
+ 
++/*
++ * 1296: MTE code on a CPU without MTE, with MTE "disabled" semantics (tags ignored, every allocation tag reads 0):
++ * LDG clears Xt's tag (no memory access), IRG/ADDG/SUBG produce tag 0, GMI and SUBP/SUBPS as in the Arm ARM,
++ * STG/ST2G store no tag (base writeback only), STZG/STZ2G zero their 16/32 bytes, STGP stores like STP.
++ * LDGM/STGM/STZGM are EL1-only and stay UNDEF. Boot-arg sweetnomte without bit 3 turns it off.
++ */
++/* sweet-mte-emu-begin (host unit test extracts from here) */
++#define SWEET_MTE_TAG_MASK 0x0F00000000000000ULL
++
++static void
++sweet_emu_mte_check_granule(uint64_t addr)
++{
++	if ((addr & 15ULL) != 0) {
++		sweet_emu_deliver_bad_access(addr);
++	}
++}
++
++static bool
++sweet_emu_mte(arm_saved_state64_t *ss, uint64_t pc, uint32_t insn)
++{
++	unsigned int rd = insn & 31U;
++	unsigned int rn = (insn >> 5) & 31U;
++	unsigned int rm = (insn >> 16) & 31U;
++
++	if ((insn & 0xFFE0FC00U) == 0x9AC01000U) {
++		/* IRG Xd|SP, Xn|SP{, Xm}: tag 0 */
++		sweet_emu_write_x(ss, rd, sweet_emu_read_x(ss, rn, true) & ~SWEET_MTE_TAG_MASK, true);
++	} else if ((insn & 0xFFE0FC00U) == 0x9AC01400U) {
++		/* GMI Xd, Xn|SP, Xm */
++		uint64_t tag = (sweet_emu_read_x(ss, rn, true) >> 56) & 0xFULL;
++		sweet_emu_write_x(ss, rd, sweet_emu_read_x(ss, rm, false) | (1ULL << tag), false);
++	} else if ((insn & 0xDFE0FC00U) == 0x9AC00000U) {
++		/* SUBP/SUBPS Xd, Xn|SP, Xm|SP (CMPP = SUBPS XZR) */
++		uint64_t a = (uint64_t)((int64_t)(sweet_emu_read_x(ss, rn, true) << 8) >> 8);
++		uint64_t b = (uint64_t)((int64_t)(sweet_emu_read_x(ss, rm, true) << 8) >> 8);
++		uint64_t res = a - b;
++		sweet_emu_write_x(ss, rd, res, false);
++		if ((insn & (1U << 29)) != 0) {
++			uint32_t nzcv = (uint32_t)(res >> 63) << 31;
++			nzcv |= (res == 0) ? PSR64_Z : 0U;
++			nzcv |= (a >= b) ? PSR64_C : 0U;
++			nzcv |= (uint32_t)((((a ^ b) & (a ^ res)) >> 63) << 28);
++			ss->cpsr = (ss->cpsr & ~PSR64_NZCV_MASK) | nzcv;
++		}
++	} else if ((insn & 0xBFC0C000U) == 0x91800000U) {
++		/* ADDG/SUBG Xd|SP, Xn|SP, #uimm6*16, #uimm4: tag 0 */
++		uint64_t off = (uint64_t)((insn >> 16) & 0x3FU) << 4;
++		uint64_t v = sweet_emu_read_x(ss, rn, true);
++		v = ((insn & (1U << 30)) != 0) ? (v - off) : (v + off);
++		sweet_emu_write_x(ss, rd, v & ~SWEET_MTE_TAG_MASK, true);
++	} else if ((insn & 0xFF200000U) == 0xD9200000U) {
++		uint32_t opc = (insn >> 22) & 3U;
++		uint32_t op2 = (insn >> 10) & 3U;
++		if (op2 == 0U) {
++			if (opc != 1U) {
++				return false;   /* STZGM, STGM, LDGM: EL1 only */
++			}
++			/* LDG Xt, [Xn|SP, #simm9*16]: the tag read is 0 */
++			sweet_emu_write_x(ss, rd, sweet_emu_read_x(ss, rd, false) & ~SWEET_MTE_TAG_MASK, false);
++		} else {
++			/* STG/STZG/ST2G/STZ2G <Xt|SP>, [Xn|SP]: op2 1 = post-index, 2 = signed offset, 3 = pre-index */
++			int64_t off = (int64_t)(((int32_t)(((insn >> 12) & 0x1FFU) << 23)) >> 23) * 16;
++			uint64_t base = sweet_emu_read_x(ss, rn, true);
++			uint64_t addr = (op2 == 1U) ? base : (base + (uint64_t)off);
++			sweet_emu_mte_check_granule(addr);
++			if (opc == 1U || opc == 3U) {
++				static const char zeros[32] = { 0 };
++				vm_size_t nbytes = (opc == 3U) ? 32U : 16U;
++				if (copyout(zeros, (user_addr_t)sweet_emu_tbi_uaddr(addr), nbytes) != 0) {
++					sweet_emu_deliver_bad_access(addr);
++				}
++			}
++			if (op2 != 2U) {
++				sweet_emu_write_x(ss, rn, base + (uint64_t)off, true);
++			}
++		}
++	} else if ((insn & 0xFFC00000U) == 0x68800000U || (insn & 0xFFC00000U) == 0x69000000U ||
++	    (insn & 0xFFC00000U) == 0x69800000U) {
++		/* STGP Xt, Xt2, [Xn|SP, #simm7*16]: 0x688 post-index, 0x690 signed offset, 0x698 pre-index */
++		uint32_t form = (insn >> 23) & 3U;
++		int64_t off = (int64_t)(((int32_t)(((insn >> 15) & 0x7FU) << 25)) >> 25) * 16;
++		uint64_t base = sweet_emu_read_x(ss, rn, true);
++		uint64_t addr = (form == 1U) ? base : (base + (uint64_t)off);
++		uint64_t data[2] = {
++			sweet_emu_read_x(ss, rd, false),
++			sweet_emu_read_x(ss, (insn >> 10) & 31U, false),
++		};
++		sweet_emu_mte_check_granule(addr);
++		if (copyout((const char *)data, (user_addr_t)sweet_emu_tbi_uaddr(addr), sizeof(data)) != 0) {
++			sweet_emu_deliver_bad_access(addr);
++		}
++		if (form != 2U) {
++			sweet_emu_write_x(ss, rn, base + (uint64_t)off, true);
++		}
++	} else {
++		return false;
++	}
++	ss->pc = pc + 4ULL;
++	sweet_emu_record(SWEET_EMU_MTE, pc, insn);
++	return true;
++}
++/* sweet-mte-emu-end */
++
+ static bool
+ sweet_emulate_user_arm64(arm_context_t *context)
+ {
+@@ -1150,13 +1257,13 @@ sweet_emulate_user_arm64(arm_context_t *context)
+ 	 * 1294: MTE's tag-check override (iOS 27's $VARIANT$MTE string functions): msr tco, #imm and msr tco, xN are
+ 	 * NOPs, mrs xN, tco reads 0 (no tags, nothing to override). Boot-arg sweetnomte without bit 1 turns it off.
+ 	 */
+-	static int sweet_tco_emu = -1;
+-	if (__improbable(sweet_tco_emu < 0)) {
+-		int v = 3;
++	static int sweet_nomte_emu = -1;
++	if (__improbable(sweet_nomte_emu < 0)) {
++		int v = 15;     /* 1296: bit 3 = MTE emulation */
+ 		PE_parse_boot_argn("sweetnomte", &v, sizeof(v));
+-		sweet_tco_emu = (v >> 1) & 1;
++		sweet_nomte_emu = v & 0xA;
+ 	}
+-	if (sweet_tco_emu &&
++	if ((sweet_nomte_emu & 2) &&
+ 	    ((insn & 0xFFFFF0FFU) == 0xD503409FU || (insn & 0xFFFFFFE0U) == 0xD51B42E0U ||
+ 	    (insn & 0xFFFFFFE0U) == 0xD53B42E0U)) {
+ 		if ((insn & 0xFFFFFFE0U) == 0xD53B42E0U) {
+@@ -1167,6 +1274,11 @@ sweet_emulate_user_arm64(arm_context_t *context)
+ 		return true;
+ 	}
+ 
++	/* 1296: MTE tag instructions with tags ignored (sweet_emu_mte); sweetnomte without bit 3 turns it off. */
++	if ((sweet_nomte_emu & 8) && sweet_emu_mte(ss, pc, insn)) {
++		return true;
++	}
++
+ 	return false;
+ }
+ 
+-- 
+2.56.0
+
