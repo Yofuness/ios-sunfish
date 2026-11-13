@@ -32,6 +32,7 @@ Done 2026-10-30: VIBRATION MOTOR BUZZES (hp2), camera opens fixed (2ed9d22), dai
 - D4 [DONE 2026-10-29] live log per boot (`../logs/boots/current.log`); the 474 MB log gzipped in `../logs/archive/`.
 
 ## Backlog items done
+- 2026-11-12 B62 Safari video picture "damaged": a flame-shot artefact (64 KB read bands), fixed by xnu 0283; atomic shots equal ffmpeg (video.md).
 
 - B31 [DONE 2026-10-30] oslog survives unreadable messages (d581e4e: per-message sigsetjmp, skip + count): unfiltered `oslog -l -t 60` while opening 4 apps = 187556 lines, 5 messages skipped (SIGSEGV at 0x10/0x20), no exit.
 - B43 [DONE 2026-10-30] camera start 11 s -> 0.4 s and AE from the real exposure (2e4f7cc, camera.md).

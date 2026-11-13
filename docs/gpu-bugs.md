@@ -17,7 +17,7 @@ each of its runs to "Bench runs" below; add the counts by hand after each soak.
 | G1 | No-fault hang, stuck TLB sync | `GPU hang or fault` with `fsr 0`, `tlb sync -> timeout` | kernel134: 2 in ~113 k submits; kernel135: 0 in 151 k; kernel138-139: 2 in ~380 k; sweetrowa55=4: 3 in ~43 k with mode 2 (rows2), 0 in ~81 k with mode 3 (mf3) | No, 0 of 8; reboot needed | Only if it voids benches |
 | G2 | Submit error, backboardd restarts | `submit failed: 0xe00002c2` | kernel135: 3 in ~34 min (151 k submits) | Restart, then G3 | Yes if it voids benches |
 | G3 | Slower mode after a backboardd restart (2026-11-01: may really be low brightness, smoothness.md) | 2nd submit about 6 ms slower | Every restart seen (m1, z1) | Reboot | Yes if it voids benches |
-| G4 | SMMU-fault hang | `GPU hang or fault` with `fsr 40000002` | kernel135: 2 in 151 k (z1 boot 20261031-073304; first listed as 1) | Yes, ~28 ms | No |
+| G4 | SMMU-fault hang | `GPU hang or fault` with `fsr 40000002` | kernel135: 2 in 151 k (z1 boot 20261031-073304; first listed as 1) | Yes, ~28 ms; since Turnip 0112 + sweetgpukill=0 backboardd keeps running (2026-11-12) | No |
 | G5 | Boot with no GPU | 0 `SWEET GPU` lines, backboardd's Metal bridge closed | Once (r1, kernel134, 20261031-035915) | Reboot | Only if it returns |
 | G6 | DeviceLost after Camera launches | `commandBuffer refused: command buffer: DeviceLost` | Once (kernel127, 2026-10-30) | Killing backboardd | Only if it returns |
 | G7 | Planar surface refused | `planar iosurface refused` | Seen with G6; effect unknown | Unknown | No |

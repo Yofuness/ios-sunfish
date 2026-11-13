@@ -1,5 +1,5 @@
 # GPU
-**State:** 🟡 Adreno 618 at 650 MHz; injected and SMMU-fault hangs recover (~37 ms); real no-fault hangs (G1) don't, but none in two full 1 h soaks (n8 2026-11-02: 399 k submits, 0 G1/G2/G4; n7 397 k submits, one soak). **Updated:** 2026-11-02.
+**State:** 🟡 Adreno 618 at 650 MHz; injected and SMMU-fault hangs recover (~37 ms) and backboardd now keeps running through them (Turnip 0112 + sweetgpukill=0, 2/2 boots, 2026-11-12); real no-fault hangs (G1) don't, but none in two full 1 h soaks (n8 2026-11-02: 399 k submits, 0 G1/G2/G4; n7 397 k submits, one soak). **Updated:** 2026-11-12.
 
 ## How to use
 - Default clock 565 MHz (`sweetgpufreq=5`); 430 MHz = `sweetgpufreq=4`; stock levels 650/800/825 = `sweetgpufreq=6..8` (xnu 0148).
@@ -22,6 +22,18 @@
 
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
+
+### 2026-11-12 23:05 Turnip 0112 A/B passes: backboardd survives a recovered GPU hang (kdA1, kdA2 vs kdB1)
+kernel165, bundle 3f069d6 (0112 + frontend 0132), everyday args + sweetgpukill=0 sweethangtest=3000, uisoak 300 s.
+| boot | 0112 | recover2 | device kept line | DEVLOST | backboardd PID | restarts | screen after |
+| kdA1 | on | 36712 us | yes (1 fault, total 1) | none | 61 -> 61 | 0 | Maps drawing |
+| kdA2 | on | 37025 us | yes | none | 61 -> 61 | 0 | Calendar drawing |
+| kdB1 | TU_DARWIN_KEEP_DEVICE=0 | 36341 us | no | DEVLOST first (turnip) | -> 424 | 1 | black + spinner |
+All: GPU hang or fault fsr 40000002 far fff0000000 (injected), 0 G1/G2, 0 failed recoveries, max 80.9-83.8 C,
+~25.5 k submits each. Frontend 0132: "native-metal: base limits: 38 of 39 fields of 264 bytes filled (maxTexture2D
+16384x16384)" in SpringBoard and backboardd. Shipped: sweetgpukill=0 joins the everyday boot args (plan); the kernel's
+compiled-in default (xnu 0244 + sunfish-boot.sh) stays 1 until U12-1b. Open: a dropped one-time upload stays wrong
+(review, U12-1b); TU_DARWIN_KEEP_DEVICE=0 switches it off.
 
 ### 2026-11-12 21:40 U12-1 keep VkDevice after a recovered GPU restart: Turnip 0112 written, Fable review, fixes in progress
 0112 (port of UniXNU c72a8a5): on a rise of the kernel's per-client faults count, keep the device (VK_SUCCESS + log)

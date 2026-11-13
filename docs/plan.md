@@ -25,8 +25,8 @@ Only items Claude can move now. User tasks are listed below and never gate work;
    1. Done 2026-11-02: research, staged spec in video.md (PAS ID 9, HFI gen1, plugin slot ExampleIPB.videodecoder).
    2. Done 2026-11-03: firmware boots, H.264 session opens/closes; 10/10 rounds idle, 29/29 under 15 min UI load (s7c).
    3. Done 2026-11-03 (v3e): `venusctl decode` bit-exact vs ffmpeg at 320x240 and 1280x720. Left: speed on a long clip.
-   4. ▶ Done 2026-11-03: 4a venusd, 4b VT plugin, 4c Safari H.264 via Venus, venusd at boot + recovery. Next: ~8 s start
-      latency, 4d conversion cost, 4e HEVC.
+   4. ▶ Done 2026-11-03: 4a venusd, 4b VT plugin, 4c Safari H.264 via Venus, venusd at boot + recovery. 2026-11-12: picture
+      right (B62 was the flame-shot), no lag, start gap ~0.5 s. Next: 4d conversion cost, 4e HEVC.
    5. Tuning: heat, 4K, several streams at once (feeds).
 2. **3D**: done 2026-11-03: three.js games_fps (WebGL 2) 15 min, 0 hangs (7.4 fps). Left: speed.
 3. **Wi-Fi throughput** (B57): 0.53 -> 3.0 (Interactive) -> 5.8 MB/s (HT20, ht1) on 2026-11-03. Next: wland's CPU
@@ -35,8 +35,8 @@ Only items Claude can move now. User tasks are listed below and never gate work;
    user's decision (Questions). Meanwhile: WebGL speed (games_fps 7 fps, GPU-bound).
 5. **GPU stability**: G1 (no recovery) and G4 (backboardd restart); nightly soak; fix whichever rises (gpu.md).
 6. **Garbled and undrawn images** (B44, B53): Notes attachments, Safari tab thumbnails, Music icon, Maps glitch.
-7. **Upstream takeaways** (2026-11-12, best first; backlog U12-*): keep VkDevice: Turnip 0112 + xnu 0282 built (kernel164,
-   not installed), A/B with sweetgpukill=0 next (gpu.md); isb: xnu 0281 in kernel163 (soak n9 = first boot); fill [device limits] (Photos/B44, 1-2 h), YCbCr sampled in place (video CPU, 6-10 h),
+7. **Upstream takeaways** (2026-11-12, best first; backlog U12-*): done 2026-11-12: keep VkDevice (0112, A/B 2/2),
+   isb (0281), [device limits] filled (0132, 38/39 fields; check Photos/B44 next); left: U12-1b bridge side of 0112, YCbCr sampled in place (video CPU, 6-10 h),
    cheap checks: submit cuts, FS constlen, cold cache, MSAA A/B. Older items: "Upstream" below.
 
 After these: small Metal test apps built here (textured cube with depth, compute), then Crossy Road (Unity), Instagram,
@@ -48,17 +48,15 @@ Listed with exact log lines and rates in [gpu-bugs.md](gpu-bugs.md) (not auto-lo
 stops phone work, or doubles in rate after a change (then turn that change off first).
 
 ## Phone
-Claude's again since 2026-11-12 21:03 (the user). Kernels built tonight: 163 (+0281 isb), 164 (+0282), 165 (+0283 atomic flame-shot).
-Booted user3: kernel162 (= kernel158 + xnu 0277/0278 Venus window, 0279 RPMh fix, 0280 SPMI retry),
-bundle d3316ff (0129 hardware MSAA resolve + 0130 center varyings), venusd 06f9715 (Interactive, 512 MB limit) + vtvenus 331e616 (avc1/hvc1, credit path), wland 206585d
-(HT20, Interactive, bounds checks), camd + hapticd Interactive, cam41. Everyday boot: `tools/sunfish-test.sh -k 162 TAG sweetse9=2 sweetcampmic=2 sweetswapbig=6
-sweetampreset=1 sweetpmemwc=2 sweetgpucap=512`. /var/local/mtl2-env = SWEET_U0011..14=1,
+Claude's since 2026-11-12 21:03 (the user). Booted t166z: kernel166 (= kernel162 + xnu 0281 isb, 0282 GetStatus NotReady after a
+failed recovery, 0283 atomic flame-shot, 0284 G2 submit logging), bundle 3f069d6 (+ Turnip 0112 keep VkDevice, frontend 0132
+device limits), venusd/vtvenus 6a24d64 (stall detectors, VT QoS), wland 206585d
+(HT20, Interactive, bounds checks), camd + hapticd Interactive, cam41. Everyday boot: `tools/sunfish-test.sh -k 166 TAG sweetse9=2 sweetcampmic=2 sweetswapbig=6
+sweetampreset=1 sweetpmemwc=2 sweetgpucap=512 sweetgpukill=0` (sweetgpukill=0 since 2026-11-12: backboardd survives recovered hangs with 0112; t166z was booted without it). /var/local/mtl2-env = SWEET_U0011..14=1,
 SWEET_SURF_FLUSH=1, SWEET_CULL=3 (TU_FETCH_GMEM_MIN_DRAWS=20 removed: G8) (tools/sunfish-install-speed.sh); backboardd env CA_DISABLE_LUMA_BOOST=1 CA_FORCE_TIMER=1.
 
 ## Next (in this order)
-0. B62: very likely a flame-shot artefact (2026-11-12, video.md 22:15: 64 KB read bands = 15 rows, each a correct frame).
-   Confirm: kernel165 (xnu 0283 atomic read) + one playing shot = ffmpeg's frame on every row; then close B62. Separate:
-   video ~3-5 s behind the page clock (latency).
+0. G2 (submit failed 0xe00002c2, 1 in n9): kernel166 logs the failing check; read it at the next G2 and fix (gpu-bugs.md).
 1. Wi-Fi CPU: userland batching (356c09a) didn't help (bat, 20:40); the per-frame reads + one /dev/wlan write per frame
    dominate: a kernel batched input path is the next step (parked behind the items below).
 2. Video CPU: credit path done (mediaserverd 55 -> 20, venusd 32 -> 10, 0 drops). Left: backboardd ~45 (vImage; bridge 0131
@@ -66,7 +64,7 @@ SWEET_SURF_FLUSH=1, SWEET_CULL=3 (TU_FETCH_GMEM_MIN_DRAWS=20 removed: G8) (tools
 3. Done: launchd Interactive A/B: camd (open 5.7 -> 0.7 s, 30 fps) and hapticd kept; sensors, btbridge cost CPU, reverted.
 4. GPU: suspect link Venus session start → GPU fault (2 of ~5 hangs today); B53 render-server snapshots intermittently
    empty; B50 Maps; WebGL speed (Optimize).
-5. Night soak n9 running 2026-11-12 (SOAK_KERNEL=163): watch for RPMh timeouts, SPMI retries, GPU hangs.
+5. Night soak n9 done 2026-11-12 (kernel163): 60 min, 0 RPMh/SPMI/G1/G4, 1 G2 + backboardd restart (void). Next soak: kernel166 + sweetgpukill=0.
 
 ## User tasks (details in user-tasks.md; nothing waits on these)
 proximity by hand (U17), battery discharge (U3), headphone plug test (U15), Files check (U13), touch while plugged in (U14).

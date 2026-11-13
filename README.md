@@ -19,7 +19,7 @@ iOS root lives in the `userdata` partition.
 > mostly switched off (permissive AMFI and sandbox, stub keystore), and many parts are missing. Do not put
 > anything personal on it.
 
-## Status (2026-11-03)
+## Status (2026-11-12)
 
 States: ✅ works, 🟡 partial, ❌ broken, ⬜ not started. Each row links to the feature file with the details; the
 plan is [docs/plan.md](docs/plan.md).
@@ -33,11 +33,11 @@ plan is [docs/plan.md](docs/plan.md).
 | [SSH](docs/features/ssh.md) | ✅ | dropbear + dash + toybox; boot to SSH 16-18 s |
 | [Display](docs/features/display.md) | ✅ | 1080x2340, GPU-composited (Metal → Turnip), vsync-paced; apps rotate to landscape and back on command (`R 3`/`R 1`), touch follows; auto-rotate waits for sensors |
 | [WebGL](docs/features/webgl.md) | ✅ | WebGL 1 and 2 draw in Safari: a three.js 3D game (games_fps, WebGL 2) ran 15 min with 0 GPU hangs at 7.4 fps (GPU-bound); 400 textured cubes 24 fps, 18 with MSAA (2026-11-03) |
-| [Video](docs/features/video.md) | 🟡 | Safari plays H.264 and HEVC 720p/1080p with hardware decode (Venus via our VideoToolbox plugin + venusd, started at boot): 0-48/1800 dropped, recovers from engine faults, mediaserverd ~4x less CPU than software, first frame 0.6 s after a session opens; HEVC 8-bit plays through Venus too; decoded frames go straight into the player's buffers (mediaserverd 55 -> 20 %, venusd 32 -> 10 % at 1080p, 2026-11-03) |
+| [Video](docs/features/video.md) | 🟡 | Safari plays H.264 and HEVC 720p/1080p with hardware decode; the picture equals ffmpeg's frame and keeps up with the page clock (2026-11-12) (Venus via our VideoToolbox plugin + venusd, started at boot): 0-48/1800 dropped, recovers from engine faults, mediaserverd ~4x less CPU than software, first frame 0.6 s after a session opens; HEVC 8-bit plays through Venus too; decoded frames go straight into the player's buffers (mediaserverd 55 -> 20 %, venusd 32 -> 10 % at 1080p, 2026-11-03) |
 | [Smoothness](docs/features/smoothness.md) | 🟡 | Safari 60, Settings 57 (p95 19.3 ms, no low launches since kernel157's vsync phase, 2026-11-02), Home about 53, Control Center 43.8 swaps/s (TU_FETCH_GMEM_MIN_DRAWS=20 and the cover cull SWEET_CULL=3, 2026-11-02), full resolution, defaults since 2026-11-02: luma boost off, was env SWEET_DEADFILL=3 M2V_SHADOW_CACHE=1 SWEET_U0011..14=1 + tools/sunfish-install-ccscale.sh (2026-11-01, kernel139, not default yet); target 60 |
 | [Haptics](docs/features/haptics.md) | ✅ | iOS haptics work: switch taps pulse the motor (DRV2624 via hapticd, launchd job, `HAPTICS=1` boot); feel check by the user open |
 | [Brightness](docs/features/brightness.md) | ✅ | Control Center slider drives the panel brightness (DCS 0x51, `sweetbl=2`) |
-| [GPU](docs/features/gpu.md) | 🟡 | Adreno 618 at 650 MHz; SMMU-fault hangs recover (~37 ms); no-fault hangs still need a reboot but none in two full 1 h soaks (n8: 399 k submits, 0 hangs of any kind, everyday setup, 2026-11-02) |
+| [GPU](docs/features/gpu.md) | 🟡 | Adreno 618 at 650 MHz; SMMU-fault hangs recover (~37 ms) without a backboardd restart (2026-11-12); no-fault hangs still need a reboot but none in two full 1 h soaks (n8: 399 k submits, 0 hangs of any kind, everyday setup, 2026-11-02) |
 | [GPU memory](docs/features/gpu-memory.md) | ✅ | leak fixed (spare command pools capped): pool flat over a 20 min app soak |
 | [Metal](docs/features/metal.md) | ✅ | Metal via SweetMetal2 (metal2vulkan + Turnip) |
 | [Touch](docs/features/touch.md) | ✅ | ST FTM5 over I²C |

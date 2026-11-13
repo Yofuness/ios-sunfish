@@ -1,5 +1,5 @@
 # Video playback and hardware decode
-**State:** 🟡 Safari plays H.264 and HEVC 720p/1080p in software (250-590 % of one core, 1080p H.264 drops 5.6 %); hardware decode: research done, decoder slot loads, the Venus engine decodes H.264 bit-exact from a phone tool, 1080p at 217 fps raw, VideoToolbox decodes H.264 through our plugin in mediaserverd, 1080p 60 fps, bit-exact (stage 4b). **Updated:** 2026-11-03.
+**State:** 🟡 Safari plays H.264 720p with Venus hardware decode and the picture is right: an atomic flame-shot of the playing video equals ffmpeg's frame (mean |diff| 1.22; B62 was a capture artefact), 30.0 fps, 0 dropped, no lag behind the page clock in two 65 s runs (2026-11-12). Earlier: software decode 250-590 % of one core; hardware decode: research done, decoder slot loads, the Venus engine decodes H.264 bit-exact from a phone tool, 1080p at 217 fps raw, VideoToolbox decodes H.264 through our plugin in mediaserverd, 1080p 60 fps, bit-exact (stage 4b). **Updated:** 2026-11-12.
 
 ## Facts
 - The iPhone X decodes video in hardware (AppleAVD); the port has no AVD, so iOS falls back to software decoders.
@@ -88,6 +88,21 @@ Switches: VENUSCTL_PRIMARY=1 (linear NV12 on OUTPUT), VENUSCTL_DPB_SETBUF=1, VEN
 
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
+
+### 2026-11-12 23:05 B62 closed: atomic flame-shots match ffmpeg (t165a); no lag without flame-shots
+kernel165 (162 + xnu 0281/0282/0283), bundle 3f069d6, venusd/vtvenus 6a24d64, everyday args. h264-720p.mp4 in Safari:
+two flame-shots with 0283's atomic read: counter 380 and 1174, whole video area = ffmpeg's frame at the counter, mean
+|diff| 1.22 (±1 frame: 4.5-7.2; ±3: 5.8-10.7); side by side visually identical (observed). B62 = flame-shot artefact,
+fixed by 0283. A shot still takes 9-16 s end to end (transfer), but the read is now one instant.
+Latency (lat.html, 1 s beacons + requestVideoFrameCallback, no flame-shots), cold and warm 65 s runs: presentedFrames =
+30 x mediaTime at every sample, 30.0 fps, 0 dropped, 1800 frames each; the "lag" from totalVideoFrames alternates
+-0.3..1.4 s (bursty counter, not real). One gap per run at the start: 932 / 1002 ms at mt 0.033; logs at the same time:
+vtvenus "no DecodeFrame call for >500 ms with 3 pending" -> "call again after 566 ms", venusd "no FBD for >500 ms: 1
+inputs queued, last EBD 554 ms ago, credits 6" -> "FBD resumed after 563 ms (frame 13)" (run 2: 515 ms). So the start
+gap is VT not feeding while waiting on early frames (preroll), ~0.5 s. The 3-5 s stalls of b62a did not happen: they
+were likely caused by the slow 2-8 s pmem reads of the old flame-shot (guess). One socket fallback frame per run
+("venusd had no credit"). QoS: no vtvenus CreateInstance line with "stall N ms, qos N" and no "switching QoS tiers"
+line, though the new stall lines are from the new vtvenus (unclear; not needed now that there is no lag).
 
 ### 2026-11-12 22:22 Video lag behind the page clock: decoder stalls + no frame shedding (read-only analysis of b62a)
 Correction: the two entries above headed 21:40 (gpu.md) and 22:15 were written at about 21:35 and 21:50.
