@@ -23,6 +23,25 @@
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
 
+### 2026-11-13 07:30 btpair: phone <-> laptop "glizzy" pairing (kernel167 bt0snoop boot, btsnoop on, btmon on the laptop)
+- The user's suggestion (relayed). Phone 39:90:21:74:07:00 "iPhone" (Settings > Bluetooth open); laptop BlueZ 5.87 controller
+  00:A5:54:B6:9B:1B, made discoverable + pairable for the test, a scratch D-Bus agent auto-confirming.
+- Pairing: attempt 1 (code shown, no tap) and attempt 2 (Pair tapped, no User Confirmation Reply left the phone; cause
+  unknown) failed with Simple Pairing Complete 0x05; attempt 3 (laptop-initiated, numeric comparison, Pair tapped 07:34:50)
+  OK at 07:34:58: link key Authenticated Combination P-256 (0x08); laptop IO cap DisplayYesNo, dedicated bonding, MITM.
+- Connected 07:35:07-07:36:10 (laptop `connect`, link key request/reply, encryption on): **A2DP** (phone = source, 6 SEPs,
+  SetConfiguration SEID 3 = AAC, Open), **AVRCP** control + browsing (it read the phone's now-playing item), **HFP AG**
+  (RFCOMM ch 8, AT handshake). Listed, not connected: NAP (Network1 Connected=false), PBAP, MAP. Phone UUIDs: 110a, 110c,
+  110e, 1116, 111f, 112f, 1132, 1200, 1801 + 2 Apple vendor UUIDs; Modalias bluetooth:v004Cp710Dd1070. iOS shows glizzy
+  Connected, then Not Connected; pairing kept on both sides.
+- Capture (OBS): phone ../logs/bt/btpair-20261113.log (1.37 MB, 11142 records in the window, 1536 without LE adverts),
+  laptop ../logs/bt/btpair-laptop-20261113.btsnoop (745 records; btmon via sudo, the user's OK); PSMs SDP 0x0001 (112
+  records), RFCOMM 0x0003 (47), AVCTP 0x0017 (49), AVDTP 0x0019 (28), AVCTP browsing 0x001b (15); disconnects 0x16; no HCI
+  errors besides the two 0x05. The laptop also tried an LE SMP pairing.
+- Open: attempt 2's missed confirmation (one-off or tap timing?); apple-wireshark loading (`-X lua_script:` needs the
+  plugin's .lua files, not its folders) before the AirPods capture. Flag /var/local/btbridge.snoop removed 07:37 (current
+  file records until the next reboot).
+
 ### 2026-11-13 07:20 bt0snoop: btsnoop validated on the phone (kernel167, everyday args, no AirPods action)
 - btbridge d61f019 installed + /var/local/btbridge.snoop; battery 4456 mV; boot rc 0, lock screen at 07:12 (webcam).
 - `btsnoop: /var/local/bt/btsnoop-20261113-071214.log`; file 0600, dir 0700; 125526 B after ~3 min (~2.5 MB/h at idle
