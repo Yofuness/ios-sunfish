@@ -1,7 +1,7 @@
 #!/bin/bash
 # Build the iOS 27.2.1 (24B156, iPhone12,1) HFSX root image for kernel301+ (stage 4, docs/root27.md).
 #
-#   mkiosroot27.sh [--profile full|c1] [--size SIZE] [--steps extract,image,rewrite,finish] [--jobs N]
+#   mkiosroot27.sh [--profile full|c1] [--size SIZE] [--steps extract,image,rewrite,tweaks,finish] [--jobs N]
 #                  [--force] [--keep-staging] [--keep-panic-on-crash] [--page-shift 12] [--simg-zero-skip]
 #
 # Steps (each one can be run alone; "image" refuses to overwrite an image unless --force):
@@ -12,6 +12,9 @@
 #   rewrite  PAC lowering inside the image: the dyld cache (zeta rewrite-zeta-dyld-cache.py with the proof in
 #            ../restore/ipsw/x/24B156/prove) and every thin arm64e Mach-O (tools/root27/rewrite-zeta-userland-tree.py),
 #            both re-signed ad hoc; written back in place (tools/root27/apply-rewrites.py)
+#   tweaks   SSH for Gate C2 (tools/root27/tweaks27.py): dropbear + dash + toybox in /var/local/bin, /bin/sh,
+#            authorized_keys (work/userland/ssh/*.pub), the org.iosonpixel.dropbear job in launchd.plist;
+#            leave it out of --steps to skip, `tweaks27.py --remove` takes it out of an existing image
 #   finish   fsck.hfsplus, then tools/root27/simg-hfs.py -> root27-PROFILE-at16g.simg: every HFS-allocated block
 #            written (zero pages too), free space DONT_CARE, 16 GiB DONT_CARE in front (userdata offset 16 GiB);
 #            --simg-zero-skip = the old img2simg -s + simg-offset.py (skips zero pages inside files: stale data)
@@ -34,7 +37,7 @@ work=$restore/root27
 py=$port/work/venv-pac/bin/python3
 OS_DMG=141-08279-223.dmg SYS_DMG=141-10128-235.dmg APP_DMG=141-08824-252.dmg
 
-profile=full size= steps=extract,image,rewrite,finish jobs=3 force=0 keep_staging=0 panic_off=1 page_shift= zero_skip=0
+profile=full size= steps=extract,image,rewrite,tweaks,finish jobs=3 force=0 keep_staging=0 panic_off=1 page_shift= zero_skip=0
 while [[ $# -gt 0 ]]; do
 	case $1 in
 	--profile) profile=$2; shift ;;
@@ -46,7 +49,7 @@ while [[ $# -gt 0 ]]; do
 	--keep-panic-on-crash) panic_off=0 ;;
 	--page-shift) page_shift=$2; shift ;;
 	--simg-zero-skip) zero_skip=1 ;;
-	*) sed -n '2,23p' "$0"; exit 2 ;;
+	*) sed -n '2,26p' "$0"; exit 2 ;;
 	esac
 	shift
 done
@@ -201,7 +204,7 @@ if has_step image; then
 	# for the built-in AppleKeyStore (no passcode; /defaults/no-effaceable-storage in the ADT).
 	# TODO after C1 (tools/sweet-root-tweaks.py, iOS 16): /private/var/containers skeleton, LastSystemVersion
 	# (DataMigration), Setup skipped, mobileactivationd data ark, CommCenter jobs removed, VirtualAudio and
-	# MediaToolbox StartRecorderServer, SpringBoard BKNoWatchdogs; dropbear + USB-ECM job for C2.
+	# MediaToolbox StartRecorderServer, SpringBoard BKNoWatchdogs. (SSH for C2: step tweaks.)
 	db="$root/private/var/db"
 	sudo install -d -o 272 -g 272 -m 0751 "$db/diagnostics"
 	sudo install -d -o 272 -g 272 -m 0755 "$db/uuidtext" "$db/diagnostics/timesync"
@@ -280,6 +283,15 @@ if has_step rewrite; then
 	sudo chown -R "$(id -u):$(id -g)" "$reports"
 	df -h "$root"
 	cleanup
+fi
+
+if has_step tweaks; then
+	# Gate C2: the iOS 16 SSH setup (tools/sunfish-install-ssh.sh) offline. No network job: the kernel brings
+	# ue0 up as 192.168.7.2/24 (patch 0075).
+	root_mount
+	sudo python3 -I "$port/tools/root27/tweaks27.py" --root "$root" --backup "$work/orig-$profile"
+	cleanup
+	lap tweaks
 fi
 
 if has_step finish; then

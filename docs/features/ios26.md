@@ -1,6 +1,6 @@
 # iOS 26 / 27 port (arm64e userland on a non-PAC SM7150)
 
-**State:** 🟡 **iOS 27.2.1 userland runs** (k315a, 2026-11-13 17:45): kernel315 (xnu-12377 + xnu/patches-12377 through 1304)
+**State:** 🟡 **iOS 27.2.1 userland runs** (k315a, 2026-11-13 17:00): kernel315 (xnu-12377 + xnu/patches-12377 through 1304)
 boots the PAC-rewritten 27.2.1 root on ufsroot1; launchd runs early boot and the system domain, 4850 execs / 353 programs in
 10 min incl. SpringBoard and backboardd, no panic; no picture yet (GPU off). Gate C1 passed; next C2 (SSH) and the
 AICMR_MATCH assert that kills ~7 daemons. **Updated:** 2026-11-13.
@@ -18,7 +18,21 @@ AICMR_MATCH assert that kills ~7 daemons. **Updated:** 2026-11-13.
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
-### 2026-11-13 17:45 k315a: iOS 27.2.1 USERLAND RUNS 10 min (SpringBoard, backboardd, 353 programs), no panic
+### 2026-11-13 17:10 SSH (dropbear) added to the 27.2.1 c1 root for Gate C2 (not booted yet)
+- New step `tweaks` in tools/mkiosroot27.sh (tools/root27/tweaks27.py, docs/root27.md): iOS 16's dropbear setup offline:
+  dropbearmulti/dash/toybox from work/userland-linux/out into /var/local/bin (plain arm64, ad hoc; deps libSystem, toybox +
+  libiconv.2/libresolv.9/libutil/libz.1, all present in the 27.2.1 cache), /bin/sh = dash (27 root had none), authorized_keys
+  from work/userland/ssh/id_ed25519.pub, /private/etc/dropbear 0700 (host keys by `-R` on first connection), launchd job
+  `org.iosonpixel.dropbear` (`/var/local/bin/dropbear -F -R -p 22`, same dict as iOS 16) in launchd.plist (733 jobs).
+- Why launchd 27 loads it (OBS, ../logs/boots/20261113-165129.log 29.716 s): launchd_cache_loader "Using unsecure cache:
+  /System/Library/xpc/launchd.plist" -> "Cache sent to launchd successfully" (boot-arg launchd_unsecure_cache=1); the plist
+  has the iOS 16 layout (LaunchDaemons keyed by plist path, VersionNumber 7). No /private/var mount on 27 (no fstab), so
+  /var/local is on the root volume. IP: kernel 0075 sets ue0 192.168.7.2/24 (ARP at 27.259 s), no userland job needed.
+- Applied to ../restore/root27/root27-c1.img: fsck clean; root27-c1-at16g.simg regenerated (11,440,100,564 bytes; 11,147 MiB
+  device writes: RAW 10,910 + FILL 237), `--verify` 2,853,740/2,853,740 blocks equal, 0 problems. Not written to the phone.
+- GUESS/risks: configd/IPConfiguration 27 could reconfigure ue0; launchd 27 may still refuse a non-Apple job path.
+
+### 2026-11-13 17:00 k315a: iOS 27.2.1 USERLAND RUNS 10 min (SpringBoard, backboardd, 353 programs), no panic
 - kernel315 (1304 lockdown sysctl), same cmdline. OBS (../logs/boots/20261113-165129.log, ../logs/k315/k315a.log; the shim ring
   wrapped): "Early boot complete" 30.3 s, then the system domain: 4850 exec lines, 353 distinct; SpringBoard (first 30.711,
   36 execs) and backboardd (31.008, 27 execs) up, still sampled by spindump at 478 s; BlueTool 478.9 s; USB-ECM ARP at 478 s.
@@ -30,7 +44,7 @@ AICMR_MATCH assert that kills ~7 daemons. **Updated:** 2026-11-13.
   PosterBoard, mediaanalysisd (C1 profile left them out).
 - Next: AICMR assert root cause (investigator); dropbear SSH on the 27 root for Gate C2.
 
-### 2026-11-13 17:25 k314a: launchd 27's abort = missing sysctl security.mac.lockdown_mode_state_public
+### 2026-11-13 16:50 k314a: launchd 27's abort = missing sysctl security.mac.lockdown_mode_state_public
 - kernel314 (1303 crash report). OBS (../logs/k314/k314a-rescue.txt): `sweet-crashmsg: pid 1 (launchd) libsystem_c:
   "lockdown_mode.c:os_lockdown_mode_enabled_block_invoke:47: No such file or directory"`; bt: libsystem_kernel __pthread_kill
   <- libsystem_c abort <- ... <- libdispatch dispatch_once <- libsystem_darwin os_lockdown_mode_enabled+44 <- launchd
@@ -38,7 +52,7 @@ AICMR_MATCH assert that kills ~7 daemons. **Updated:** 2026-11-13.
   sysctlbyname("security.mac.lockdown_mode_state_public"); 12377 only has security.mac.lockdown_mode_state.
 - 1304 adds the _public alias (same variable, CTLFLAG_ANYBODY). kernel315 next.
 
-### 2026-11-13 17:05 launchd 27's abort: not a launchd assertion (Fable; research/notes/launchd27-abort-2026-11-13.md)
+### 2026-11-13 16:35 launchd 27's abort: not a launchd assertion (Fable; research/notes/launchd27-abort-2026-11-13.md)
 - OBS: all 414 launchd os_assert/os_crash sites go through abort_with_reason (namespace 7 LIBXPC + text, which our kernel
   prints); k313a shows namespace 2 (plain SIGABRT) and no sweet-ux (no fault). After "Early boot complete" launchd activates
   the system domain (loads LaunchDaemons from the sent cache) and starts the first spawns; iOS 16 exec'd xpcproxy 36 ms after

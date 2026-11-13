@@ -15,7 +15,7 @@ git (Apple's files). Nothing here touches the phone.
 ```sh
 tools/mkiosroot27.sh --profile c1          # first-launchd root, 13G image (~11 GB content)
 tools/mkiosroot27.sh                       # full root, 28G image
-tools/mkiosroot27.sh --profile c1 --steps rewrite,finish    # redo one part
+tools/mkiosroot27.sh --profile c1 --steps rewrite,tweaks,finish    # redo one part
 ```
 Steps (log in `../restore/root27/build-PROFILE.log`):
 1. **extract**: `ipsw extract --dmg fs|sys|app` into `../restore/ipsw/x/24B156/root-src/24B156__iPhone12,1/`, then
@@ -38,7 +38,19 @@ Steps (log in `../restore/root27/build-PROFILE.log`):
      tools/ios27-pac/sunfish_pac.py's TPRO and noreturn-end fixes, without which 27's dyld is refused; per-image proof,
      lowering, header -> arm64 ALL, ad hoc re-hash, platform id 26, CS_RUNTIME on executables), applied in place; the
      originals go to `../restore/root27/orig-PROFILE/`. Reports: `../restore/root27/reports-PROFILE/{cache,tree}.json`.
-4. **finish**: `fsck.hfsplus -fy` (Linux name decomposition), `fsck.hfsplus -fn`, then `tools/root27/simg-hfs.py --offset 16G`
+4. **tweaks** (Gate C2, SSH; `tools/root27/tweaks27.py`, as root on the mounted image): iOS 16's SSH setup
+   (tools/sunfish-install-ssh.sh) done offline. dropbearmulti, dash and toybox from `work/userland-linux/out`
+   (tools/build-userland-linux.sh; plain arm64, ad hoc, libSystem only, toybox also libiconv/libresolv/libutil/libz, all in
+   the 27 cache) go to /var/local/bin with dropbear/scp/dbclient/dropbearkey and 65 toybox applets as symlinks; /bin/sh is a
+   copy of dash (27 has none; root's shell is /bin/sh); /private/etc/dropbear (0700, host keys made by `dropbear -R` on the
+   first connection); /var/root/.ssh/authorized_keys = work/userland/ssh/*.pub; /var/root/.profile. The job
+   `org.iosonpixel.dropbear` (the iOS 16 dict: `dropbear -F -R -p 22`, RunAtLoad, KeepAlive, Interactive) goes into
+   /System/Library/xpc/launchd.plist's LaunchDaemons: under `launchd_unsecure_cache=1` launchd_cache_loader 27 sends that
+   file to launchd without checking the .sig (k315a: "Using unsecure cache: /System/Library/xpc/launchd.plist", "Cache sent
+   to launchd successfully"). The plist before the first tweak is kept as `../restore/root27/orig-PROFILE/launchd.plist.pre-tweaks`.
+   No network job: the kernel configures ue0 as 192.168.7.2/24 (patch 0075). Skip: leave `tweaks` out of `--steps`; undo
+   on an existing image: `tweaks27.py --root MNT --remove`. Test: `tools/sunfish-ssh 'uname -a'`.
+5. **finish**: `fsck.hfsplus -fy` (Linux name decomposition), `fsck.hfsplus -fn`, then `tools/root27/simg-hfs.py --offset 16G`
    -> `root27-PROFILE-at16g.simg` and the same with `--verify`. It reads the HFS+ volume header and allocation bitmap:
    every allocated block is RAW (zero runs of >= 16 blocks as FILL 0, chunks <= 16 MiB), free runs and everything past the
    volume are DONT_CARE, both volume headers always RAW, 16 GiB DONT_CARE in front. `--verify` checks every allocated block
