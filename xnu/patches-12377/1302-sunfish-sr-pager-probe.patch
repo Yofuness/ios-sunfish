@@ -1,0 +1,239 @@
+From 4d93b6c5f3e6df5ec9f8685d474a37eb9481585f Mon Sep 17 00:00:00 2001
+From: Yofuness <compiledchickennuggets@gmail.com>
+Date: Fri, 13 Nov 2026 13:58:02 -0500
+Subject: [PATCH] sunfish: page-in probe for two dyld cache pages
+ (sweetprobe1/2: raw file bytes and slid result per request, sr pager + vnode
+ pager) (1302)
+
+---
+ osfmk/vm/bsd_vm.c                 |   7 ++
+ osfmk/vm/vm_shared_region_pager.c | 167 ++++++++++++++++++++++++++++++
+ 2 files changed, 174 insertions(+)
+
+diff --git a/osfmk/vm/bsd_vm.c b/osfmk/vm/bsd_vm.c
+index 1227c60..ca9c40c 100644
+--- a/osfmk/vm/bsd_vm.c
++++ b/osfmk/vm/bsd_vm.c
+@@ -851,6 +851,9 @@ vnode_pager_cluster_write(
+ /*
+  *
+  */
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++extern void sweet_probe_vnode_pagein(memory_object_t mo, vm_object_offset_t base, vm_size_t cnt, int kret);  /* 1302 */
++#endif /* ARM64_BOARD_CONFIG_SWEET */
+ kern_return_t
+ vnode_pager_cluster_read(
+ 	vnode_pager_t           vnode_object,
+@@ -877,6 +880,10 @@ vnode_pager_cluster_read(
+ 	    (upl_size_t) cnt,
+ 	    flags,
+ 	    &local_error);
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++	/* 1302: the file bytes a probed dyld cache page got from this read (sweetprobe1/2) */
++	sweet_probe_vnode_pagein(&vnode_object->vn_pgr_hdr, base_offset, cnt, kret);
++#endif /* ARM64_BOARD_CONFIG_SWEET */
+ /*
+  *       if(kret == PAGER_ABSENT) {
+  *       Need to work out the defs here, 1 corresponds to PAGER_ABSENT
+diff --git a/osfmk/vm/vm_shared_region_pager.c b/osfmk/vm/vm_shared_region_pager.c
+index 4236ee3..21e1d6c 100644
+--- a/osfmk/vm/vm_shared_region_pager.c
++++ b/osfmk/vm/vm_shared_region_pager.c
+@@ -67,6 +67,137 @@ extern boolean_t diversify_user_jop;
+ 
+ extern int panic_on_dyld_issue;
+ 
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++/*
++ * 1302: page-in probe for two dyld cache file pages (k310a: mount reads "Schedule..." at .25.dylddata __DATA +0x1ca8;
++ * k304a: launchd's ___security_config at __TPRO_CONST +0xb0 has bit 2). sweetprobe1/sweetprobe2 = file offsets of the
++ * pages (off unless sweetprobe1 is set), sweetprobesub = cache file (25 = .25.dylddata, -1 = any
++ * dyld_shared_cache_arm64e* file), sweetprobemax = lines per boot (past it, only at request 2^n).
++ */
++TUNABLE(uint64_t, sweet_probe1, "sweetprobe1", 0);
++TUNABLE(uint64_t, sweet_probe2, "sweetprobe2", 0);
++TUNABLE(int, sweet_probe_sub, "sweetprobesub", 25);
++TUNABLE(uint32_t, sweet_probe_max, "sweetprobemax", 64);
++static uint32_t sweet_probe_lines;
++static uint32_t sweet_probe_reqs[2][2];         /* [0 sr pager, 1 vnode pager][target] */
++extern int proc_selfpid(void);
++struct proc;
++extern char *proc_name_address(struct proc *p);
++
++/* target index (0/1) of a page-aligned file offset, or -1 */
++static int
++sweet_probe_target(vm_object_offset_t fo)
++{
++	if (sweet_probe1 == 0) {
++		return -1;
++	}
++	if (fo == trunc_page_64(sweet_probe1)) {
++		return 0;
++	}
++	if (sweet_probe2 != 0 && fo == trunc_page_64(sweet_probe2)) {
++		return 1;
++	}
++	return -1;
++}
++
++/* true if the vnode pager's file is the probed cache file; its name in name[] */
++static bool
++sweet_probe_file(memory_object_t mo, char *name, vm_size_t len)
++{
++	const char *key = "dyld_shared_cache_arm64e";
++	boolean_t trunc = FALSE;
++	const char *p;
++	int sub = 0;
++
++	name[0] = '\0';
++	if (mo == MEMORY_OBJECT_NULL ||
++	    vnode_pager_get_object_name(mo, NULL, 0, name, len, &trunc) != KERN_SUCCESS) {
++		return false;
++	}
++	name[len - 1] = '\0';
++	p = strnstr(name, key, len);
++	if (p == NULL) {
++		return false;
++	}
++	if (sweet_probe_sub < 0) {
++		return true;
++	}
++	p += strlen(key);
++	if (*p == '.') {
++		for (p++; *p >= '0' && *p <= '9'; p++) {
++			sub = sub * 10 + (*p - '0');
++		}
++	}
++	return sub == sweet_probe_sub;
++}
++
++static bool
++sweet_probe_should_log(uint32_t req)
++{
++	return os_atomic_inc_orig(&sweet_probe_lines, relaxed) < sweet_probe_max || (req & (req - 1)) == 0;
++}
++
++static const char *
++sweet_probe_pname(void)
++{
++	void *bp = get_bsdtask_info(current_task());
++	return bp ? proc_name_address(bp) : "?";
++}
++
++/* 1302: called by vnode_pager_cluster_read after vnode_pagein of [base, base+cnt) of a file */
++void sweet_probe_vnode_pagein(memory_object_t mo, vm_object_offset_t base, vm_size_t cnt, int kret);
++void
++sweet_probe_vnode_pagein(memory_object_t mo, vm_object_offset_t base, vm_size_t cnt, int kret)
++{
++	char name[64];
++	bool named = false;
++
++	if (sweet_probe1 == 0) {
++		return;
++	}
++	for (int t = 0; t < 2; t++) {
++		uint64_t want = (t == 0) ? sweet_probe1 : sweet_probe2;
++		vm_object_offset_t pg = trunc_page_64(want);
++		vm_object_t object;
++		vm_page_t m;
++		uint64_t q1 = 0, q2 = 0, f8 = 0;
++		int state = -1;         /* -1 no page, else busy | absent << 1 */
++		uint32_t req;
++
++		if (want == 0 || pg < base || pg >= base + cnt) {
++			continue;
++		}
++		if (!named) {
++			if (!sweet_probe_file(mo, name, sizeof(name))) {
++				return;
++			}
++			named = true;
++		}
++		req = os_atomic_inc(&sweet_probe_reqs[1][t], relaxed);
++		if (!sweet_probe_should_log(req)) {
++			continue;
++		}
++		object = memory_object_control_to_vm_object(mo->mo_control);
++		if (object != VM_OBJECT_NULL) {
++			vm_object_lock(object);
++			m = vm_page_lookup(object, pg);
++			if (m != VM_PAGE_NULL) {
++				const char *va = (const char *)phystokv((pmap_paddr_t)VM_PAGE_GET_PHYS_PAGE(m) << PAGE_SHIFT);
++				state = (m->vmp_busy ? 1 : 0) | (m->vmp_absent ? 2 : 0);
++				q1 = *(const uint64_t *)(va + 0x1ca8);
++				q2 = *(const uint64_t *)(va + 0xb0);
++				f8 = *(const uint64_t *)va;
++			}
++			vm_object_unlock(object);
++		}
++		printf("sweet-probe: pid %d (%s) vnpager vp %s off 0x%llx len 0x%x req %u kret %d page %d "
++		    "qword@0x1ca8 0x%llx qword@0xb0 0x%llx first8 %016llx\n",
++		    proc_selfpid(), sweet_probe_pname(), name, (unsigned long long)pg, (unsigned int)cnt, req, kret, state,
++		    q1, q2, f8);
++	}
++}
++#endif /* ARM64_BOARD_CONFIG_SWEET */
++
+ /*
+  * SHARED REGION MEMORY PAGER
+  *
+@@ -511,6 +642,11 @@ shared_region_pager_data_request(
+ 	struct vm_object_fault_info     fault_info;
+ 	mach_vm_offset_t        slide_start_address;
+ 	u_int32_t                               slide_info_page_size;
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++	int                     sweet_t = -1;   /* 1302 probe target of this page, or -1 */
++	uint64_t                sweet_raw[3] = { 0, 0, 0 };
++	char                    sweet_name[64];
++#endif /* ARM64_BOARD_CONFIG_SWEET */
+ 
+ 	PAGER_DEBUG(PAGER_ALL, ("shared_region_pager_data_request: %p, %llx, %x, %x\n", mem_obj, offset, length, protection_required));
+ 
+@@ -703,6 +839,20 @@ retry_src_fault:
+ 		assert(src_page_object->paging_in_progress > 0);
+ 		vm_object_unlock(src_page_object);
+ 
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++		/* 1302: raw backing bytes of a probed cache page, before the slide */
++		sweet_t = sweet_probe_target(pager->srp_backing_offset + offset + cur_offset);
++		if (sweet_t >= 0 &&
++		    !sweet_probe_file(pager->srp_backing_object->pager, sweet_name, sizeof(sweet_name))) {
++			sweet_t = -1;
++		}
++		if (sweet_t >= 0) {
++			sweet_raw[0] = *(const uint64_t *)(src_vaddr + 0x1ca8);
++			sweet_raw[1] = *(const uint64_t *)(src_vaddr + 0xb0);
++			sweet_raw[2] = *(const uint64_t *)src_vaddr;
++		}
++#endif /* ARM64_BOARD_CONFIG_SWEET */
++
+ 		/*
+ 		 * Process the original contents of the source page
+ 		 * into the destination page.
+@@ -789,6 +939,23 @@ retry_src_fault:
+ 			shared_region_pager_slid++;
+ 		}
+ 
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++		if (sweet_t >= 0) {     /* 1302: the page as produced (slid) next to the raw file bytes */
++			uint32_t req = os_atomic_inc(&sweet_probe_reqs[0][sweet_t], relaxed);
++			if (sweet_probe_should_log(req)) {
++				printf("sweet-probe: pid %d (%s) srpager vp %s off 0x%llx len 0x%x req %u rv 0x%x "
++				    "raw qword@0x1ca8 0x%llx qword@0xb0 0x%llx first8 %016llx "
++				    "slid qword@0x1ca8 0x%llx qword@0xb0 0x%llx first8 %016llx\n",
++				    proc_selfpid(), sweet_probe_pname(), sweet_name,
++				    (unsigned long long)(pager->srp_backing_offset + offset + cur_offset),
++				    (unsigned int)length, req, retval,
++				    sweet_raw[0], sweet_raw[1], sweet_raw[2],
++				    *(const uint64_t *)(dst_vaddr + 0x1ca8), *(const uint64_t *)(dst_vaddr + 0xb0),
++				    *(const uint64_t *)dst_vaddr);
++			}
++		}
++#endif /* ARM64_BOARD_CONFIG_SWEET */
++
+ 		assert(VM_PAGE_OBJECT(src_page) == src_page_object);
+ 		assert(src_page->vmp_busy);
+ 		assert(src_page_object->paging_in_progress > 0);
+-- 
+2.56.0
+

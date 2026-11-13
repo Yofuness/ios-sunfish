@@ -67,6 +67,12 @@ New patches (1290+):
 - `1300` `sweetsrnest=0` (default 1 = as before): the shared region enters each task without pmap nesting; A/B for
   k310a (mount sees foreign data in a shared-region __DATA page; research/notes/mount27-sigbus-2026-11-13.md, H1).
 - `1301` with `sweetsrnest=0`, skip pmap_trim of the shared region (k311a: "pmap_trim_internal: grand range not in nested region").
+- `1302` page-in probe (off unless `sweetprobe1` is set): `sweetprobe1`/`sweetprobe2` = file offsets of two dyld cache
+  pages, `sweetprobesub` = cache file (default 25 = .25.dylddata, -1 = any), `sweetprobemax` = lines per boot (64; past it
+  only at request 2^n). Logs `sweet-probe: pid ... srpager ... raw/slid qword@0x1ca8 qword@0xb0 first8` per
+  shared_region_pager_data_request of a target page, and `... vnpager ... kret page` after each vnode_pagein that read it
+  (request counts in `req`). For k310a's "Schedule..." page and the `___security_config` page:
+  `sweetprobe1=0x8e90000 sweetprobe2=0xb908000`.
 - No patch needed for iOS 27's CPU-feature checks: DIT, SB, SHA512, SHA3, JSCVT, FCMA commpage bits and their
   hw.optional.arm.FEAT_* sysctls come from the ID registers of the boot CPU (an A55) in osfmk/arm/commpage/commpage.c;
   A55/A76 lack all six (GUESS from the Arm TRM values; check `sysctl hw.optional` on the first 12377 boot); commpage 0x10c is zeroed and unwritten; the user timebase type is USER_TIMEBASE_SPEC (CNTVCT, not
