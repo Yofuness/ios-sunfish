@@ -1,5 +1,5 @@
 # Bluetooth
-**State:** ✅🟡 Bluetooth works in iOS Settings: on, discoverable, nearby devices listed (bt7, kernel105+, btbridge=1 default + btbridge). Pairing works (Xbox controller, AirPods Pro 2 with noise control); UART flow control fixed the drops; audio playback untested. **Updated:** 2026-10-30. **Updated:** 2026-10-30.
+**State:** ✅🟡 Bluetooth works in iOS Settings: on, discoverable, nearby devices listed (bt7, kernel105+, btbridge=1 default + btbridge). Pairing works (Xbox controller, AirPods Pro 2 with noise control); UART flow control fixed the drops; A2DP music to AirPods plays (audio.md 2026-10-30 16:05 U11, kernel127). btsnoop capture in btbridge (-S / flag file; untested on the phone). **Updated:** 2026-11-13.
 
 ## Facts
 | Item | Value | Ref (../recon/live.dts) |
@@ -22,6 +22,12 @@
 
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
+
+### 2026-11-13 07:02 btsnoop capture in btbridge (stage 0)
+- btbridge (phone/wifi/btbridge.c, tag bt-snoop) can write a btsnoop v1 file (datalink 1002, H4 records, flags bit0 = controller->host, bit1 = command/event) of exactly what bluetoothd sees: each whole packet bluetoothd sends (host_input, before the shim answers or forwards it) and each packet written to it (up(): chip-forwarded, shim/lext-synthesized, the watchdog's HCI_Reset answer). The bridge's own chip traffic (bring-up, firmware, watchdog probes) and the dropped 0xedc debug ACL are not in it.
+- Enable: `touch /var/local/btbridge.snoop` on the phone (next btbridge start) -> `/var/local/bt/btsnoop-YYYYMMDD-HHMMSS.log` (dir 0700, file 0600: it holds link keys); or `-S PATH`. Default off (one branch per packet).
+- 64 KiB buffer, flushed when full, at least once a second, on SIGTERM/SIGINT (stop_bridge) and at exit; capped at 256 MiB; a write error stops the capture with one log line, the bridge goes on. btbridge.log: `btsnoop: PATH` at start, `btsnoop: PATH: N records, M bytes` at the end.
+- Checked on the host only: the snoop functions with a test main (4 records) -> tshark reads them as Sent Reset / Rcvd Command Complete (Reset) / Sent+Rcvd ACL with the right directions and times. Built clean (tools/build-userland-linux.sh, no warnings). Untested on the phone; for decoding: Wireshark + pabloaul/apple-wireshark (AACP = L2CAP PSM 0x1001).
 
 ### 2026-11-03 16:55 Interactive launchd job A/B (ljA/ljB/ljR, kernel161, 5 min screen on, one boot each)
 | job | metric | A (ljA, default) | B (ljB, Interactive) |

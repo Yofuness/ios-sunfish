@@ -6,13 +6,14 @@
  * between it and the polled SE3 UART (as ios-redfin's btd --bridge does). bluetoothd job:
  * BT_HCI_TRANSPORT=H4BC:POSIX:com.apple.uart.bluetooth,115200 (the line stays at 115200; termios is ignored).
  *
- *   btbridge [-n] [-L] [-W] [-R] [-F] [-v] [-p] [-B BAUD] [-d DIR]   -n: no H4 shim (packets pass unchanged, still logged); -L: no legacy ->
+ *   btbridge [-n] [-L] [-W] [-R] [-F] [-v] [-p] [-B BAUD] [-d DIR] [-S SNOOP]   -n: no H4 shim (packets pass unchanged, still logged); -L: no legacy ->
  *                                 extended LE translation (bt7, bt_lext.c); -W: no chip watchdog (bt8); -R: no rx
  *                                 sequencer restart after an overrun (bt8, bt_uart.c); -F: manual RTS held ready
  *                                 instead of automatic RX flow control (bt10); -B: UART rate after
  *                                 power-on, before the download (bt11; default 3000000, 0 = 115200); -v: per-packet log lines; DIR: firmware
  *                                 (/var/local/fw/bt); -p: the old pty instead of /dev/btbridge (/dev/cu.bluetooth ->
- *                                 pty slave; bluetoothd 20H392 has no tty H4 driver, bt4: kept for comparison)
+ *                                 pty slave; bluetoothd 20H392 has no tty H4 driver, bt4: kept for comparison);
+ *                                 -S: btsnoop file (bt-snoop, below)
  * Log: /var/local/btbridge.log (the previous run's: .prev). Off: /var/local/btbridge.off. Runs in the foreground
  * (launchd job org.iosonpixel.btbridge, tools/sunfish-install-btbridge.sh).
  *
@@ -39,6 +40,10 @@
  * after RX overruns, bluetoothd retried forever).
  * o12: while the screen is blanked, no ACL link is up and no HCI traffic for 500 ms, the pump sleeps DARK_MS between
  * passes instead of polling every 1-2 ms (automatic RFR holds the chip's data meanwhile). Env BT_DARK=0: off.
+ * bt-snoop (stage 0, LibrePods): -S PATH, or the flag file /var/local/btbridge.snoop -> /var/local/bt/btsnoop-
+ * YYYYMMDD-HHMMSS.log: a btsnoop v1 file (datalink 1002, H4) of exactly what bluetoothd sends and gets, i.e. the
+ * host side before the shim and after it (chip-forwarded and locally answered packets alike); the bridge's own chip
+ * traffic (bring-up, firmware, watchdog) is not in it. Mode 0600 (link keys), capped at SNOOP_MAX. Default: off.
  */
 #include <errno.h>
 #include <notify.h>
@@ -55,6 +60,7 @@
 #include <sys/stat.h>
 #include <sys/sysctl.h>
 #include <sys/time.h>
+#include <time.h>
 #include "pmem.h"
 #include "bt_uart.h"
 #include "bt_lext.h"
@@ -83,10 +89,123 @@ static uint32_t op_baud = 3000000;	/* bt11: -B N, the rate after power-on (0 = s
 static uint16_t wd_op;
 static double wd_since;
 static unsigned wd_misses, n_recover;
+/* bt-snoop: btsnoop v1 capture of the host side (-S PATH or SNOOP_FLAG; off: snoop_fd < 0) */
+#define SNOOP_FLAG	"/var/local/btbridge.snoop"
+#define SNOOP_DIR	"/var/local/bt"
+#define SNOOP_MAX	(256u << 20)
+#define SNOOP_EPOCH	0x00dcddb30f2f8000ULL	/* us from 0000-01-01 to 1970-01-01 */
+static int snoop_fd = -1, snoop_opened;
+static const char *snoop_path;
+static char snoop_name[64];
+static uint8_t snoop_buf[1 << 16];
+static unsigned snoop_n, snoop_recs;
+static uint64_t snoop_bytes;
+static double snoop_last;
 
 static void on_signal(int sig)
 {
 	stop_sig = sig;
+}
+
+static void be32(uint8_t *b, uint32_t v)
+{
+	b[0] = (uint8_t)(v >> 24);
+	b[1] = (uint8_t)(v >> 16);
+	b[2] = (uint8_t)(v >> 8);
+	b[3] = (uint8_t)v;
+}
+
+/* bt-snoop: write the buffer out; a write error ends the capture (the pump goes on) */
+static void snoop_flush(void)
+{
+	snoop_last = now_s();
+	if (snoop_fd < 0 || !snoop_n)
+		return;
+	for (unsigned at = 0; at < snoop_n;) {
+		ssize_t w = write(snoop_fd, snoop_buf + at, snoop_n - at);
+		if (w > 0) {
+			at += (unsigned)w;
+		} else if (w < 0 && errno == EINTR) {
+			continue;
+		} else {
+			printf("btsnoop: write: %s: capture stopped\n", w < 0 ? strerror(errno) : "short write");
+			close(snoop_fd);
+			snoop_fd = -1;
+			break;
+		}
+	}
+	snoop_n = 0;
+}
+
+static void snoop_close(void)
+{
+	if (!snoop_opened)
+		return;
+	snoop_opened = 0;
+	snoop_flush();
+	if (snoop_fd >= 0)
+		close(snoop_fd);
+	snoop_fd = -1;
+	printf("btsnoop: %s: %u records, %llu bytes\n", snoop_path, snoop_recs, (unsigned long long)snoop_bytes);
+}
+
+/* bt-snoop: -S PATH, else SNOOP_FLAG -> SNOOP_DIR/btsnoop-YYYYMMDD-HHMMSS.log; the file header */
+static void snoop_open(void)
+{
+	if (!snoop_path) {
+		if (access(SNOOP_FLAG, F_OK))
+			return;
+		time_t t = time(NULL);
+		struct tm tm;
+		localtime_r(&t, &tm);
+		mkdir(SNOOP_DIR, 0700);
+		strftime(snoop_name, sizeof(snoop_name), SNOOP_DIR "/btsnoop-%Y%m%d-%H%M%S.log", &tm);
+		snoop_path = snoop_name;
+	}
+	snoop_fd = open(snoop_path, O_CREAT | O_TRUNC | O_WRONLY, 0600);
+	if (snoop_fd < 0) {
+		printf("btsnoop: open %s: %s: off\n", snoop_path, strerror(errno));
+		return;
+	}
+	static const uint8_t hdr[16] = { 'b', 't', 's', 'n', 'o', 'o', 'p', 0, 0, 0, 0, 1, 0, 0, 0x03, 0xea };
+	snoop_opened = 1;
+	memcpy(snoop_buf, hdr, sizeof(hdr));
+	snoop_n = sizeof(hdr);
+	snoop_bytes = sizeof(hdr);
+	snoop_last = now_s();
+	printf("btsnoop: %s\n", snoop_path);
+}
+
+/* bt-snoop: one whole H4 packet; rx = controller -> host. Flags bit0 rx, bit1 command/event */
+static void snoop(const uint8_t *p, unsigned n, int rx)
+{
+	if (snoop_fd < 0 || !n)
+		return;
+	if (snoop_bytes + 24 + n > SNOOP_MAX) {
+		printf("btsnoop: %s reached %u MiB: capture stopped\n", snoop_path, SNOOP_MAX >> 20);
+		snoop_close();
+		return;
+	}
+	if (snoop_n + 24 + n > sizeof(snoop_buf))
+		snoop_flush();
+	if (snoop_fd < 0 || 24 + n > sizeof(snoop_buf))
+		return;
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	uint64_t ts = (uint64_t)tv.tv_sec * 1000000u + (uint64_t)tv.tv_usec + SNOOP_EPOCH;
+	uint8_t *r = snoop_buf + snoop_n;
+	be32(r, n);
+	be32(r + 4, n);
+	be32(r + 8, (rx ? 1u : 0u) | (p[0] == 0x01 || p[0] == 0x04 ? 2u : 0u));
+	be32(r + 12, 0);
+	be32(r + 16, (uint32_t)(ts >> 32));
+	be32(r + 20, (uint32_t)ts);
+	memcpy(r + 24, p, n);
+	snoop_n += 24 + n;
+	snoop_bytes += 24 + n;
+	snoop_recs++;
+	if (now_s() - snoop_last >= 1.0)
+		snoop_flush();
 }
 
 static void hexline(const char *dir, const uint8_t *b, unsigned n, unsigned max)
@@ -100,6 +219,8 @@ static void hexline(const char *dir, const uint8_t *b, unsigned n, unsigned max)
 /* to bluetoothd */
 static void up(const uint8_t *p, unsigned n)
 {
+	if (snoop_fd >= 0)
+		snoop(p, n, 1);		/* bt-snoop: every caller passes one whole packet */
 	for (unsigned at = 0; at < n;) {
 		ssize_t w = write(master, p + at, n - at);
 		if (w > 0) {
@@ -281,6 +402,8 @@ static void host_input(void)
 		}
 		if (!need || hn < need)
 			break;
+		if (snoop_fd >= 0)
+			snoop(hb, need, 0);	/* bt-snoop: as bluetoothd sent it, before the shim */
 		int done = 0;
 		if (hb[0] == 0x01)
 			done = host_cmd(hb, need);
@@ -421,6 +544,7 @@ static void stop_bridge(void)
 	if (master >= 0)
 		close(master);
 	unlink(READY);
+	snoop_close();		/* bt-snoop */
 	printf("stats: cmd %u evt %u local %u; uart dropped %u, overruns %u, rx restarts %u, recoveries %u\n", n_cmd,
 	       n_evt, n_local, rx_dropped, rx_overruns, rx_restarts, n_recover);
 }
@@ -522,8 +646,10 @@ int main(int argc, char **argv)
 			op_baud = (uint32_t)strtoul(argv[++i], NULL, 0);
 		else if (!strcmp(argv[i], "-d") && i + 1 < argc)
 			fw_dir = argv[++i];
+		else if (!strcmp(argv[i], "-S") && i + 1 < argc)
+			snoop_path = argv[++i];
 		else {
-			fprintf(stderr, "usage: btbridge [-n] [-L] [-W] [-R] [-F] [-v] [-p] [-B BAUD] [-d DIR]\n");
+			fprintf(stderr, "usage: btbridge [-n] [-L] [-W] [-R] [-F] [-v] [-p] [-B BAUD] [-d DIR] [-S SNOOP]\n");
 			return 2;
 		}
 	}
@@ -549,6 +675,8 @@ int main(int argc, char **argv)
 	struct sigaction sa = { .sa_handler = on_signal };
 	sigaction(SIGTERM, &sa, NULL);
 	sigaction(SIGINT, &sa, NULL);
+	snoop_open();		/* bt-snoop */
+	atexit(snoop_close);
 	unlink(READY);
 	pm_init();
 	wait_wifi();
@@ -599,6 +727,8 @@ int main(int argc, char **argv)
 			stats = now_s() + 60;
 		}
 		if (now_s() > flush) {
+			if (snoop_fd >= 0)
+				snoop_flush();	/* bt-snoop: at least once a second */
 			fflush(stdout);
 			flush = now_s() + 1;
 		}
