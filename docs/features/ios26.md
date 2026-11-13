@@ -18,6 +18,17 @@ next: the AICMR_MATCH assert (~11 daemons), Bluetooth on 27, display (Gate D). *
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 17:30 AICMR assert = AMFI op 0x66 unanswered by our stand-in (Fable; research/notes/aicmr-2026-11-13.md)
+- OBS: libxpc `__xpc_token_satisfies_lwcr` (0x1805de624..) zeroes a 0x404-byte `amfi_interface_constraint_match_result_t`
+  {u32 error_code; char message[0x400]}, calls `amfi_launch_constraint_matches_process` -> `__mac_syscall("AMFI", 0x66,
+  {audit_token[32], lwcr ptr, u32 lwcr_size, result ptr, u32 result_size=0x404})`; on a syscall error it returns "not
+  matched" but error_code stays 0 (= AICMR_MATCH) -> os_crash (namespace 18). Our sweet_amfi.c:412-413 returns ENOPOLICY for
+  all ops but 0x5a/0x5b (log: `SWEET AMFI: deviceconfigurat syscall 102`). Caller chain: XPCPeerRequirement.hasEntitlement.
+- Fix (next patch): op 0x66 -> validate sizes, copyout 0x404 zero bytes (match), return 0; also answer 0x5f
+  (cdhash_in_trustcache) and 0x60 (query_bootarg_state).
+- cryptexd's sig 5 at libaxis+... (pc == lr after a `ret`, at a `cbz`): cause open (looks like a single-step trap); next:
+  print ESR + the instruction word in the sweet-ux line.
+
 ### 2026-11-13 17:15 k316c2: GATE C2 PASSED: SSH into iOS 27.2.1 over USB-ECM
 - Tweaked C1 image (dropbear job, dash /bin/sh, toybox; tools/root27/tweaks27.py) written (fastboot -S 256M, 44 chunks, 115 s);
   kernel315, same cmdline. OBS: ping 192.168.7.2 3/3 at 60 s; `uname -a`: "Darwin iPhone 25.5.0 Darwin Kernel Version 25.5.0
