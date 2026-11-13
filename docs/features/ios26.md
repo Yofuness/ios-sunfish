@@ -18,6 +18,16 @@ execs mount (pid 2), which dies with SIGBUS. MTE instructions are emulated (1294
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 15:50 ROOT CAUSE: the sparse write skipped zero pages; stale data in the 27.2.1 root
+- ufsroot1 vs root27-c1.img, sha256 per MiB (phone read-only, kernel167): 2314 of 13312 chunks differ; 1486 are all-zero in
+  the image, 828 hold data; every differing page in 3 sampled chunks is all-zero in the image and holds old partition data
+  on the phone ("lular:4C66F", "task:4C2D4", compressed blocks). Cause: `img2simg -s` made zero 4 KiB blocks DONT_CARE, so
+  fastboot never wrote them. Hit files incl. dyld_shared_cache_arm64e.25/.54/.77.dylddata, .26/.55.dyldreadonly,
+  .79.dyldlinkedit and ~825 others. This explains mount's "Schedule..." pointer (zero page 0 of .25.dylddata __DATA) and
+  very likely launchd's MTE path (___security_config, zero word in .25.dylddata __TPRO_CONST). Hashes: ../logs/root27-verify/.
+- Fix: a sparse writer that writes every allocated HFS block (zero ones as FILL) and leaves only free blocks DONT_CARE
+  (implementer running); then rewrite ufsroot1 and boot. The MTE/TCO emulation (1294-1297) and probes stay as safety nets.
+
 ### 2026-11-13 15:45 k312a: no pmap nesting changes nothing: the bad shared-cache data is in the pages themselves
 - kernel312 (1301) + sweetsrnest=0. OBS (../logs/k312/k312a-rescue.txt): launchd 27 bootstraps; TCO + MTE emulated again
   (___security_config still has bit 2); mount still `sweet-ux: ... pc 0x6c756465686353` ("Schedul"). H1 (nested pmap leak)
