@@ -17,7 +17,8 @@ bootable until iOS 26/27 is daily-usable (every boot is RAM-only; never flash).
 ## The user's decisions (2026-11-13)
 - New direction approved; iPhone 11 (iPhone12,1) IPSWs approved (26.6.2 23G90 and 27.2.1 24B156 downloaded to
   ../restore/ipsw, sha1 in iphone12,1.sha1; 27.0.1 24A446 may be fetched too if 27.2.1's census fails).
-- iOS 16's data area (/var, ufsroot1) may be wiped entirely if the new root needs the space. Still: check the target,
+- iOS 16's data area (/var, ufsroot1) may be wiped entirely if the new root needs the space. 2026-11-13 10:55: "yes, you
+  can overwrite ios 16 and its partitions" (userdata writes for the 27.2.1 root approved; /var/local backed up first). Still: check the target,
   write a dated log line first, keep docs/recovery.md working, never flash or relock.
 
 ## Stages (go/no-go gates; ▶ = being worked; stage work is exempt from the half-day limit, sub-steps are not)
@@ -62,10 +63,6 @@ bridge 0137 (gpu15e); mtl2-env SWEET_U0011..14=1, SWEET_SURF_FLUSH=1, SWEET_CULL
 Never kill mediaserverd/camd in tests (hard reset 2026-11-13 05:10): reboot instead.
 
 ## Questions for you (Claude took the recommended path meanwhile)
-- **Write the 27.2.1 root over iOS 16's /var region?** (userdata from 16 GiB, fastboot sparse write with a 16 GiB DONT_CARE
-  head, after backing up /var/local; iOS 16's root stays and boots with sweetnofstab=1). It is a userdata flash, which
-  CLAUDE.md forbids without your OK. Meanwhile: the non-destructive path (a ~10-12 GB C1 image as a file in /var over
-  USB, ~2.5-3 h, + a ufsrootbase boot-arg). research/notes/root27-pipeline-2026-11-13.md.
 - App Store (B56, attestation spoofing) and the PowerLog/CoreDuet deletion: still open, parked with the old plan.
 
 ## Your tasks at the phone
