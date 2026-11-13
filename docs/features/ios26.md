@@ -1,9 +1,9 @@
 # iOS 26 / 27 port (arm64e userland on a non-PAC SM7150)
 
-**State:** 🟡 **Gate C1 passed** (k308a, 2026-11-13 13:55): iOS 27.2.1 launchd ("Darwin Bootstrapper Version 7.0.0") runs on
-kernel308 (xnu-12377 + xnu/patches-12377 through 1297) from the PAC-rewritten C1 root on ufsroot1, runs its boot tasks and
-execs mount (pid 2), which dies with SIGBUS. MTE instructions are emulated (1294/1296/1297). Next: C2 (SSH over USB-ECM).
-**Updated:** 2026-11-13.
+**State:** 🟡 **iOS 27.2.1 userland runs** (k315a, 2026-11-13 17:45): kernel315 (xnu-12377 + xnu/patches-12377 through 1304)
+boots the PAC-rewritten 27.2.1 root on ufsroot1; launchd runs early boot and the system domain, 4850 execs / 353 programs in
+10 min incl. SpringBoard and backboardd, no panic; no picture yet (GPU off). Gate C1 passed; next C2 (SSH) and the
+AICMR_MATCH assert that kills ~7 daemons. **Updated:** 2026-11-13.
 
 ## Facts
 - Goal (the user, 2026-11-13): LibrePods development needs a current iOS host; target iOS 27, iOS 26 first if better.
@@ -18,6 +18,18 @@ execs mount (pid 2), which dies with SIGBUS. MTE instructions are emulated (1294
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 17:45 k315a: iOS 27.2.1 USERLAND RUNS 10 min (SpringBoard, backboardd, 353 programs), no panic
+- kernel315 (1304 lockdown sysctl), same cmdline. OBS (../logs/boots/20261113-165129.log, ../logs/k315/k315a.log; the shim ring
+  wrapped): "Early boot complete" 30.3 s, then the system domain: 4850 exec lines, 353 distinct; SpringBoard (first 30.711,
+  36 execs) and backboardd (31.008, 27 execs) up, still sampled by spindump at 478 s; BlueTool 478.9 s; USB-ECM ARP at 478 s.
+  Forced to fastboot at 598 s (UDP reboot). Panel: -v console only (sweetgpu=0).
+- Crashes: AICMR assert `matched == (match_result.error_code == AICMR_MATCH)` (reason ns 18 code 0x2) in deviceconfigurationd,
+  analyticsd, familycircled, hybridsearchd, duetexpertd, coreservicesd, appmanagedfeaturesd, transparencyd, findmydeviced,
+  axassetsd, backboardd (10x); common bt 0x241a39750 0x18ccf5878 0x18541e70c (slide 0x4e40000). cryptexd: sig 5 trap
+  (code 0x600000001) x16 -> "Too many corpses being created". launchd errors: jetsam watermark 22; missing executables
+  PosterBoard, mediaanalysisd (C1 profile left them out).
+- Next: AICMR assert root cause (investigator); dropbear SSH on the 27 root for Gate C2.
+
 ### 2026-11-13 17:25 k314a: launchd 27's abort = missing sysctl security.mac.lockdown_mode_state_public
 - kernel314 (1303 crash report). OBS (../logs/k314/k314a-rescue.txt): `sweet-crashmsg: pid 1 (launchd) libsystem_c:
   "lockdown_mode.c:os_lockdown_mode_enabled_block_invoke:47: No such file or directory"`; bt: libsystem_kernel __pthread_kill
