@@ -273,6 +273,17 @@ Newest first. Earlier soaks were shorter or used other loads, so compare rates, 
 | 2026-10-31 z1 | kernel135, allocator | ~34 min, stopped early | 151 k | 0 | 3 | 2 | - |
 | 2026-10-31 soak1 | kernel134, allocator | 2 boots | ~113 k | 2 | at least 1 | not counted | - |
 
+### 2026-11-13 03:00 G2 mechanism (Fable read-only; judge cut off by a usage limit)
+The failing entry's size (0x2b4) is intact, only the pointed-to tu_bo was zeroed (darwin_submit_add_entries copies
+bo->darwin_handle / bo->iova from the BO, size from the cs entry; tu_knl_darwin.cc:694-707). Top candidate (guess, the
+code order is observed): darwin_bo_finish releases the kernel handle (retire ring enqueue 654 + darwin_reap_locked 657,
+which BoFrees at once when the fence is done) BEFORE memset(bo,0) at 667, holding only a read lock; darwin_bo_init /
+init_host take no lock; slots are indexed by handle and the kernel re-issues the lowest free handle (v2NewSlot). So a
+BO created on another thread in that window gets its fresh slot wiped -> a live CS BO with handle 0 / iova 0 (G2), or a
+draw_cs BO with iova 0 (IB to 0 -> a G1/G4-like fault). Rate fits ~1 per 400 k submits (guess). Ruled out for this
+bridge: secondary-buffer copies (only RENDER_PASS_CONTINUE secondaries), vis-stream/perfcntr/u_trace/autotune entries,
+SWEET_CS_TRIM_KB (off). Fix: Turnip 0113, zero the slot before the handle can be reused (msm backend order), being written.
+
 ### 2026-11-13 01:35 G2 cause caught (soak n10, xnu 0284)
 `[3552.997] SWEET MTL: v2 com.apple.WebKit.GPU: submit bad buffer 1/4 (iova below window) handle 0 iova 0x0 bytes 0x2b4
 win 0x1200000000+0x100000000`, same timestamp as `MTL2[369 com.apple.WebKit.GPU]: DEVLOST first (turnip) ...
