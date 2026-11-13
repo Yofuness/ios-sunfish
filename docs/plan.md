@@ -36,7 +36,7 @@ bootable until iOS 26/27 is daily-usable (every boot is RAM-only; never flash).
 3. **Kernel rebase** (7-12 d): base = IOS-26-Hot xnu/patches-26 (MIT, 116/116 clean on 12377; rebase map 2026-11-13) [was: Scion's layer], UniXNU's 8-syscall patch, our 0125-0285
    without 0160's vendored tree, PAC layer (zeta plain-auth + an EL0 emulator), GiaSen facts re-implemented (no licence:
    ideas only). New tree work/src/xnu-12377, patches xnu/patches-12377/. **Gate C:** RAM-booted kernel reaches serial
-   launchd, then SSH over USB-ECM, on a rewritten root in its own region; iOS 16 still boots.
+   launchd (C1 PASSED 2026-11-13 13:55, kernel308), then SSH over USB-ECM, on a rewritten root in its own region; iOS 16 still boots.
 4. **Root pipeline** (2-4 d, inside 3): 27.2.1; fold the 3 prover fixes into a tools/ prover + full-cache run (0.5 d,
    needs > 8 GB: VM off); mkiosroot for the new IPSW + PAC rewrite incl. TEXT_STUBS (BRAA x16,x17), ad hoc
    signing / trust cache, N104 ADT (random-seed, CTRR props), HFSX >= 24 GB in its own userdata region (iOS 16 /var may go).

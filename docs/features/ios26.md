@@ -1,8 +1,9 @@
 # iOS 26 / 27 port (arm64e userland on a non-PAC SM7150)
 
-**State:** 🔬 Gate A passed for both roots (2026-11-13); root = iOS 27.2.1 (24B156; its dyld proves with 3 prover fixes). Kernel series
-**Gate B passed**; kernel301 (xnu-12377.121.6 + xnu/patches-12377) BOOTS on the phone with the --xnu12377 ADT: 8/8
-CPUs, UFS, HFS root mounted read-only, launchd exec'd (k301b); iOS 16's launchd then dies on a port guard (expected). Stage 0 btsnoop done. **Updated:** 2026-11-13.
+**State:** 🟡 **Gate C1 passed** (k308a, 2026-11-13 13:55): iOS 27.2.1 launchd ("Darwin Bootstrapper Version 7.0.0") runs on
+kernel308 (xnu-12377 + xnu/patches-12377 through 1297) from the PAC-rewritten C1 root on ufsroot1, runs its boot tasks and
+execs mount (pid 2), which dies with SIGBUS. MTE instructions are emulated (1294/1296/1297). Next: C2 (SSH over USB-ECM).
+**Updated:** 2026-11-13.
 
 ## Facts
 - Goal (the user, 2026-11-13): LibrePods development needs a current iOS host; target iOS 27, iOS 26 first if better.
@@ -17,6 +18,16 @@ CPUs, UFS, HFS root mounted read-only, launchd exec'd (k301b); iOS 16's launchd 
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 13:55 k308a: GATE C1 PASSED: launchd 27 bootstraps; mount (pid 2) dies with SIGBUS
+- kernel308 (1297), same cmdline as k302b. OBS (../logs/k308/k308a-rescue.txt; the live log missed it): TCO + MTE (LDG)
+  emulated once each, no sweet-undef; `com.apple.xpc.launchd ... hello, launchd UUID: B6C82430-...`; "Could not opt into 50 MB
+  Jetsam high watermark: 22"; **"Darwin Bootstrapper Version 7.0.0: Wed Oct 7 23:41:26 PDT 2026;
+  root:libxpc_executables-3298.42.1~13/launchd/RELEASE_ARM64E"**; boot-args echoed; (system) entering ondemand mode, created;
+  lo0 127.0.0.1; boot tasks exclaves-boot and mount-phase-1; `sweet-nomte: security_config 0x18`; exec mount; 28.615 "pid 2
+  exited -- exit reason namespace 2 subcode 0xa" (SIGBUS) -> "SWEET: critical exit: mount[2] exited (signal 10)" -> panic.
+- Gate C1 ("serial launchd from a RAM-booted kernel + rewritten root") is met. Next: log fatal aborts of every process
+  (1298) to find mount's SIGBUS; then C2.
+
 ### 2026-11-13 13:35 k307a: MTE emulation works (LDG); next SIGILL is `dc gva, x9`
 - kernel307 (1296). OBS (../logs/k307/k307a-rescue.txt): `SWEET EMU: first tco emulated (pid=1 ...)`, `SWEET EMU: first mte
   emulated (pid=1 pc=0x19ab34e90 insn=0xd9600008)`, then `sweet-undef: pid 1 (launchd) ... pc 0x19ab17d40 word 0xd50b7469`
