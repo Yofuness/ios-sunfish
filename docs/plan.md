@@ -26,7 +26,7 @@ bootable until iOS 26/27 is daily-usable (every boot is RAM-only; never flash).
    stale State line (A2DP works, audio.md 2026-10-30). Gives LibrePods data now.
 1. **Build host** (1-1.5 d): parameterise tools/vm-build-xnu.sh + tools/macos-vm/* (VM_DIR, MACOS_VERSION, XC, PATCH_DIR,
    KDK_MODE=fake), guard against a second live VM; then a second VM `~/VMs/macos15` (Sequoia 15.7 + Xcode 26.1, 40-50 GB).
-   Xcode needs an Apple ID download: user task U-X26 (until then try Xcode 16.2 if it is on disk). **Gate B:** stock
+   Xcode 26.1 is on disk: ../restore/xcode/Xcode_26.1_Universal.xip (the user, 2026-11-13 06:55). **Gate B:** stock
    xnu-12377.121.6 DEVELOPMENT links (VMAPPLE smoke test, then SWEET).
 2. **Donor census** (1 d, host only, can run before stage 1): extract both IPSWs (out of git), zeta's prover on each cache
    (PAC, FJCVTZS/FCMA/LRCPC2/CSSC/MOPS/BF16 counts), strings of bluetoothd/BlueTool/audioaccessoryd (BT_HCI_TRANSPORT,
@@ -49,8 +49,8 @@ when 27's census is clean. xnu-13 source appearing changes nothing before Gate E
 
 ## Next (in this order; a fresh /loop session starts here)
 1. Stage 0 btsnoop (implementer for btbridge, builder, one phone-runner boot). 2. Stage 2 census in parallel (one
-investigator; IPSWs are on disk once the download task finishes; extracted files under ../restore/ipsw/x/, out of git).
-3. Stage 1 VM script parameterisation (no new VM yet); then the Sequoia VM once Xcode 26.1 is available (user task).
+investigator; both IPSWs are on disk, sha1 verified; extracted files under ../restore/ipsw/x/, out of git).
+3. Stage 1: VM script parameterisation, then the Sequoia 15.7 VM with Xcode 26.1 (on disk).
 4. Keep iOS 16 healthy: the B64/B65 result (gpu15e, bundle with Turnip 0115 + bridge 0137) decides whether
    SWEET_YCBCR_GPU=1 goes back to default (video.md); no new iOS 16 feature work.
 
@@ -61,12 +61,10 @@ bridge 0137 (gpu15e); mtl2-env SWEET_U0011..14=1, SWEET_SURF_FLUSH=1, SWEET_CULL
 Never kill mediaserverd/camd in tests (hard reset 2026-11-13 05:10): reboot instead.
 
 ## Questions for you (Claude took the recommended path meanwhile)
-- Xcode 26.1 for the new build VM needs an Apple ID download (user task U-X26 in user-tasks.md). Meanwhile Claude
-  does stages 0 and 2 and the script work.
 - App Store (B56, attestation spoofing) and the PowerLog/CoreDuet deletion: still open, parked with the old plan.
 
 ## Your tasks at the phone
-In [user-tasks.md](user-tasks.md): Xcode 26.1 download (U-X26) first; the old iOS 16 ones are parked.
+In [user-tasks.md](user-tasks.md): U-X26 done (Xcode 26.1); the old iOS 16 ones are parked.
 
 ## Backlog
 Broken/Later/Optimize in [backlog.md](backlog.md); iOS 16 items stay there, parked by the new direction.

@@ -4,7 +4,7 @@ Things only a person at the phone can do (feel, listen, look, plug in). Claude k
 reads the answers here or in chat. Moved out of docs/plan.md on 2026-10-30 (the user's ask). Done ones go to
 [completed.md](completed.md).
 
-- U-X26 (first; 2026-11-13, the iOS 26/27 direction) Xcode 26.1 for the new build VM: sign in at
+- U-X26 DONE 2026-11-13 06:55 (../restore/xcode/Xcode_26.1_Universal.xip). (2026-11-13, the iOS 26/27 direction) Xcode 26.1 for the new build VM: sign in at
   https://developer.apple.com/download/all/ with your Apple ID, download "Xcode 26.1" (.xip, ~3 GB) and put it in
   `../restore/xcode/` (create it). Also fine: Xcode 16.2 for a first try. Claude can't do this (Apple ID login). ~10 min.
 - (The iOS 16 tasks below are parked by the new direction; answer them only if convenient.)
