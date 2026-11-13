@@ -26,7 +26,8 @@ Only items Claude can move now. User tasks are listed below and never gate work;
    2. Done 2026-11-03: firmware boots, H.264 session opens/closes; 10/10 rounds idle, 29/29 under 15 min UI load (s7c).
    3. Done 2026-11-03 (v3e): `venusctl decode` bit-exact vs ffmpeg at 320x240 and 1280x720. Left: speed on a long clip.
    4. ▶ Done 2026-11-03: 4a venusd, 4b VT plugin, 4c Safari H.264 via Venus, venusd at boot + recovery. 2026-11-12: picture
-      right (B62 was the flame-shot), no lag, start gap ~0.5 s. Next: 4d conversion cost, 4e HEVC.
+      right (B62 was the flame-shot), no lag, start gap ~0.5 s. 4d: GPU path works 2026-11-13 (bundle 0394a9d,
+      SWEET_YCBCR_GPU=1: 30 fps, 4/1048 dropped, backboardd 24 %); next: 15 min video run, 720p/HEVC/camera, then default. 4e HEVC.
    5. Tuning: heat, 4K, several streams at once (feeds).
 2. **3D**: done 2026-11-03: three.js games_fps (WebGL 2) 15 min, 0 hangs (7.4 fps). Left: speed.
 3. **Wi-Fi throughput** (B57): 0.53 -> 3.0 (Interactive) -> 5.8 MB/s (HT20, ht1) on 2026-11-03. Next: wland's CPU
@@ -56,7 +57,11 @@ sweetampreset=1 sweetpmemwc=2 sweetgpucap=512 sweetgpukill=0` (sweetgpukill=0 si
 SWEET_SURF_FLUSH=1, SWEET_CULL=3 (TU_FETCH_GMEM_MIN_DRAWS=20 removed: G8) (tools/sunfish-install-speed.sh); backboardd env CA_DISABLE_LUMA_BOOST=1 CA_FORCE_TIMER=1.
 
 ## Next (in this order)
-0. G2 (submit failed 0xe00002c2, 1 in n9): kernel166 logs the failing check; read it at the next G2 and fix (gpu-bugs.md).
+0. Hand-off 2026-11-13 04:05 (session ended at 530 K context; ultracode off, Pro plan: single agents, CLAUDE.md):
+   a) GPU video path default: 15 min 1080p run + 720p/HEVC + camera preview with SWEET_YCBCR_GPU=1 (video.md 04:00), then
+      make it the default (off: SWEET_YCBCR_GPU=0) if clean. b) G2: Turnip 0113 installed (fix), watch soaks for "submit bad".
+   c) B53 left: Safari background-tab tiles never snapshotted. d) Turnip NULL write on refused CS BO (gpu-bugs.md 03:40).
+   e) Night soak tonight on kernel167 + bundle 0394a9d.
 1. Wi-Fi CPU: userland batching (356c09a) didn't help (bat, 20:40); the per-frame reads + one /dev/wlan write per frame
    dominate: a kernel batched input path is the next step (parked behind the items below).
 2. Video CPU: credit path done (mediaserverd 55 -> 20, venusd 32 -> 10, 0 drops). Left: backboardd ~45 (vImage; bridge 0131

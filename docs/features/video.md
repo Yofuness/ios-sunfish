@@ -89,6 +89,19 @@ Switches: VENUSCTL_PRIMARY=1 (linear NV12 on OUTPUT), VENUSCTL_DPB_SETBUF=1, VEN
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
 
+### 2026-11-13 04:00 GPU video path works: 30 fps, 0.4 % dropped, backboardd 24 % (A3n; bundle 0394a9d)
+kernel167, bundle 0394a9d (bridge 0134 with the gate fixed: "SWEET_YCBCR_HWFILTER mode 1" logged for backboardd;
+frontend 0136: "fmt 550 ... -> cpu (XR10 on the cpu path" for backboardd and WebKit.GPU). 1080p H.264 inline ~37 s,
+mtl2-env = everyday + SWEET_YCBCR_GPU=1, no tracing (A3n): FB 30.0-31.0 fps, dropped 4/1048, backboardd CPU 24 %
+(psx 7.24 s in 30 s), GPU busy 34-36 %, backboardd 151-166 submits per 5 s at 10.8-11.1 ms, mediaserverd ~27 %,
+venusd ~12 %. Atomic flame-shot (counter 1234) vs ffmpeg frame 1234: mean |diff| 1.36 (+-1 frame: 6.7) (all observed).
+Traced A3: per video frame cb p50 21.1 ms (A2 51.1, B 9.8); render pass 18.5 ms; one conversion dispatch 2.68 ms;
+copy_buffer 2836389 per frame 0 (the XR10 staging chain is gone). Draw spans: fs 022f7d92b3 draws are the heaviest
+(2.03 + 1.43 ms). Compared with the CPU path (A2/B 02:15): drops 48/1111 -> 4/1048, backboardd ~45 % (untraced, earlier
+runs) -> 24 %. One void run (a tap opened Safari's URL bar). Files: work/0131-trace/a3/.
+Open before making SWEET_YCBCR_GPU the default: a 15 min video run (the CS-allocation NULL write in gpu-bugs.md
+appeared under GPU-path memory pressure), 720p + HEVC clips, camera preview (420f also takes the GPU route).
+
 ### 2026-11-13 03:40 Fable trace analysis: where the GPU path's time goes (corrects 02:15)
 Per VIDEO frame command buffer (p50): GPU path 51.1 ms vs CPU path 9.8 ms (observed; the 24.2/9.0 per-frame means of
 02:15 mix video and non-video frames). The +41 ms: +25.1 ms in the one full-screen gmem pass, only in the ~20 bins under
