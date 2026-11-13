@@ -38,7 +38,7 @@ Steps (log in `../restore/root27/build-PROFILE.log`):
      tools/ios27-pac/sunfish_pac.py's TPRO and noreturn-end fixes, without which 27's dyld is refused; per-image proof,
      lowering, header -> arm64 ALL, ad hoc re-hash, platform id 26, CS_RUNTIME on executables), applied in place; the
      originals go to `../restore/root27/orig-PROFILE/`. Reports: `../restore/root27/reports-PROFILE/{cache,tree}.json`.
-4. **tweaks** (Gate C2, SSH; `tools/root27/tweaks27.py`, as root on the mounted image): iOS 16's SSH setup
+4. **tweaks** (Gate C2, SSH, and Bluetooth; `tools/root27/tweaks27.py`, as root on the mounted image): iOS 16's SSH setup
    (tools/sunfish-install-ssh.sh) done offline. dropbearmulti, dash and toybox from `work/userland-linux/out`
    (tools/build-userland-linux.sh; plain arm64, ad hoc, libSystem only, toybox also libiconv/libresolv/libutil/libz, all in
    the 27 cache) go to /var/local/bin with dropbear/scp/dbclient/dropbearkey and 65 toybox applets as symlinks; /bin/sh is a
@@ -50,6 +50,17 @@ Steps (log in `../restore/root27/build-PROFILE.log`):
    to launchd successfully"). The plist before the first tweak is kept as `../restore/root27/orig-PROFILE/launchd.plist.pre-tweaks`.
    No network job: the kernel configures ue0 as 192.168.7.2/24 (patch 0075). Skip: leave `tweaks` out of `--steps`; undo
    on an existing image: `tweaks27.py --root MNT --remove`. Test: `tools/sunfish-ssh 'uname -a'`.
+   **Bluetooth part** (stage 6, default on; `--no-bt` or `TWEAKS_ARGS=--no-bt` leaves it out, `--remove --no-ssh` takes only
+   it out): iOS 16's tools/sunfish-install-bt.sh + sunfish-install-btbridge.sh offline. btbridge and bluetool-stub (plain
+   arm64, ad hoc, libSystem only) go to /var/local/bin; the WCN3990 firmware crbtfw21.tlv + crnv21.bin (Qualcomm's, out of
+   git; `--btfw DIR`, default ../backup/ios16-var-20261113/var/local/fw/bt, else ../restore/fw/vendor/bt) to
+   /var/local/fw/bt. launchd.plist: com.apple.BlueTool ProgramArguments `[/usr/sbin/BlueTool, -R]` -> `[/var/local/bin/bluetool-stub]`
+   (MachService com.apple.BlueTool kept), com.apple.bluetoothd env `BT_HCI_TRANSPORT=H4BC:POSIX:com.apple.uart.bluetooth,115200`
+   + `BT_BAUDRATE=115200` (24B156's bluetoothd reads both, donor census s4), new job `org.iosonpixel.btbridge` (RunAtLoad,
+   root). `--remove` puts the 24B156 BlueTool arguments back and drops the two env keys. btsnoop stays off (no
+   /var/local/btbridge.snoop; touch it on the phone to capture into /var/local/bt). On the phone: `/var/local/btbridge.off`
+   stops btbridge. Needs the kernel's /dev/btbridge + kctl com.apple.uart.bluetooth (xnu 0226 port, boot-arg btbridge=1,
+   in the 1244 defaults) and /dev/pmem (default on). Logs: /var/local/btbridge.log, /private/var/tmp/bluetool-stub.log.
 5. **finish**: `fsck.hfsplus -fy` (Linux name decomposition), `fsck.hfsplus -fn`, then `tools/root27/simg-hfs.py --offset 16G`
    -> `root27-PROFILE-at16g.simg` and the same with `--verify`. It reads the HFS+ volume header and allocation bitmap:
    every allocated block is RAW (zero runs of >= 16 blocks as FILL 0, chunks <= 16 MiB), free runs and everything past the

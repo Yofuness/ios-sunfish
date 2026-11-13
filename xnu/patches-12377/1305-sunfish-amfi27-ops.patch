@@ -1,0 +1,87 @@
+From 95f9bed5ac54fb4e0aec39b9acb41e46915cf4f6 Mon Sep 17 00:00:00 2001
+From: Yofuness <compiledchickennuggets@gmail.com>
+Date: Fri, 13 Nov 2026 17:25:28 -0500
+Subject: [PATCH] sunfish: AMFI stand-in answers iOS 27 op 0x66 (launch
+ constraint match = AICMR_MATCH) (1305)
+
+---
+ bsd/kern/sweet_amfi.c | 56 +++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 56 insertions(+)
+
+diff --git a/bsd/kern/sweet_amfi.c b/bsd/kern/sweet_amfi.c
+index c95712b..81901c9 100644
+--- a/bsd/kern/sweet_amfi.c
++++ b/bsd/kern/sweet_amfi.c
+@@ -402,6 +402,59 @@ sweet_sandbox_syscall(struct proc *p, int call, user_addr_t arg)
+ 
+ static uint64_t sweet_amfi_seen[2];
+ 
++/*
++ * 1305: iOS 27 libxpc/libamfi ops (research/notes/aicmr-2026-11-13.md). Without answers, libxpc's lightweight code
++ * requirement check (__xpc_token_satisfies_lwcr) reads "not matched" with error_code 0 (= AICMR_MATCH) and os_crashes
++ * (k315a: ~11 daemons). Like the rest of this stand-in (cs_integrity_skip, every root binary is platform), every
++ * peer satisfies every requirement. sweetamfi27=0 turns these answers off (ENOPOLICY as before).
++ */
++/* 0x5f (cdhash_in_trustcache) and 0x60 (query_bootarg_state) stay ENOPOLICY: not fatal in k315a, layouts unverified */
++#define SWEET_AMFI_LC_MATCHES_PROCESS   0x66    /* amfi_launch_constraint_matches_process */
++#define SWEET_AMFI_AICMR_SIZE           0x404   /* {u32 error_code; char message[0x400]}, AICMR_MATCH = 0 */
++#define SWEET_AMFI_LWCR_MAX             0x4000
++
++static int
++sweet_amfi27_on(void)
++{
++	static int on = -1;
++	if (on < 0) {
++		int v = 1;
++		PE_parse_boot_argn("sweetamfi27", &v, sizeof(v));
++		on = v;
++	}
++	return on;
++}
++
++static int
++sweet_amfi_lc_matches(user_addr_t arg)
++{
++	struct {
++		uint8_t  audit_token[32];
++		uint64_t lwcr;
++		uint32_t lwcr_size;
++		uint32_t pad0;
++		uint64_t result;
++		uint32_t result_size;
++		uint32_t pad1;
++	} args;
++	static const char zeros[SWEET_AMFI_AICMR_SIZE] = { 0 };
++	int error;
++
++	if (!sweet_amfi27_on()) {
++		return ENOPOLICY;
++	}
++	_Static_assert(sizeof(args) == 0x40, "amfi lc args");
++	error = copyin(arg, &args, sizeof(args));
++	if (error) {
++		return error;
++	}
++	if (args.result_size != SWEET_AMFI_AICMR_SIZE || args.lwcr_size == 0 || args.lwcr_size > SWEET_AMFI_LWCR_MAX) {
++		return EINVAL;
++	}
++	return copyout(zeros, (user_addr_t)args.result, SWEET_AMFI_AICMR_SIZE);   /* error_code 0 = AICMR_MATCH */
++}
++
++
+ static int
+ sweet_amfi_syscall(struct proc *p, int call, user_addr_t arg)
+ {
+@@ -411,6 +464,9 @@ sweet_amfi_syscall(struct proc *p, int call, user_addr_t arg)
+ 		proc_name(proc_pid(p), name, sizeof(name));
+ 		printf("SWEET AMFI: %s syscall %d\n", name, call);
+ 	}
++	if (call == SWEET_AMFI_LC_MATCHES_PROCESS) {
++		return sweet_amfi_lc_matches(arg);
++	}
+ 	if (call != SWEET_AMFI_DYLD_POLICY_SELF && call != SWEET_AMFI_DYLD_POLICY_PID) {
+ 		return ENOPOLICY;
+ 	}
+-- 
+2.56.0
+

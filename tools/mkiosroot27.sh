@@ -14,7 +14,8 @@
 #            both re-signed ad hoc; written back in place (tools/root27/apply-rewrites.py)
 #   tweaks   SSH for Gate C2 (tools/root27/tweaks27.py): dropbear + dash + toybox in /var/local/bin, /bin/sh,
 #            authorized_keys (work/userland/ssh/*.pub), the org.iosonpixel.dropbear job in launchd.plist;
-#            leave it out of --steps to skip, `tweaks27.py --remove` takes it out of an existing image
+#            Bluetooth (stage 6): btbridge + bluetool-stub, BT firmware, BlueTool/bluetoothd job edits, btbridge job
+#            (off: TWEAKS_ARGS=--no-bt); leave it out of --steps to skip, `tweaks27.py --remove` takes it out again
 #   finish   fsck.hfsplus, then tools/root27/simg-hfs.py -> root27-PROFILE-at16g.simg: every HFS-allocated block
 #            written (zero pages too), free space DONT_CARE, 16 GiB DONT_CARE in front (userdata offset 16 GiB);
 #            --simg-zero-skip = the old img2simg -s + simg-offset.py (skips zero pages inside files: stale data)
@@ -287,9 +288,10 @@ fi
 
 if has_step tweaks; then
 	# Gate C2: the iOS 16 SSH setup (tools/sunfish-install-ssh.sh) offline. No network job: the kernel brings
-	# ue0 up as 192.168.7.2/24 (patch 0075).
+	# ue0 up as 192.168.7.2/24 (patch 0075). Stage 6: the iOS 16 Bluetooth setup too (TWEAKS_ARGS=--no-bt: without).
 	root_mount
-	sudo python3 -I "$port/tools/root27/tweaks27.py" --root "$root" --backup "$work/orig-$profile"
+	# shellcheck disable=SC2086
+	sudo python3 -I "$port/tools/root27/tweaks27.py" --root "$root" --backup "$work/orig-$profile" ${TWEAKS_ARGS:-}
 	cleanup
 	lap tweaks
 fi

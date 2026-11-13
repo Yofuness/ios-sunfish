@@ -82,6 +82,8 @@ New patches (1290+):
   flags, reason) for pid 1, first 4. Notes: research/notes/launchd27-abort-2026-11-13.md section 4.
 - `1304` sysctl `security.mac.lockdown_mode_state_public` (= lockdown_mode_state, anybody may read): iOS 27's
   libsystem_darwin os_lockdown_mode_enabled() asserts on ENOENT (k314a: launchd 27 abort after early boot).
+- `1305` AMFI stand-in answers op 0x66 (amfi_launch_constraint_matches_process): result {error_code 0 = AICMR_MATCH};
+  libxpc's LWCR check os_crashed ~11 daemons without it (k315a; research/notes/aicmr-2026-11-13.md). `sweetamfi27=0` off.
 - No patch needed for iOS 27's CPU-feature checks: DIT, SB, SHA512, SHA3, JSCVT, FCMA commpage bits and their
   hw.optional.arm.FEAT_* sysctls come from the ID registers of the boot CPU (an A55) in osfmk/arm/commpage/commpage.c;
   A55/A76 lack all six (GUESS from the Arm TRM values; check `sysctl hw.optional` on the first 12377 boot); commpage 0x10c is zeroed and unwritten; the user timebase type is USER_TIMEBASE_SPEC (CNTVCT, not
@@ -111,9 +113,20 @@ New patches (1290+):
 
 ## Our 0125-0285: what is in, what is not
 
-In (16): 0125 (touch panel 2340 + sunfish early-fb/A6 FB address; added beyond the Gate C list because the early
+In (18): 0125 (touch panel 2340 + sunfish early-fb/A6 FB address; added beyond the Gate C list because the early
 framebuffer PA/height in SWEET.h live there), 0127, 0151, 0175 (fuzz), 0176, 0184, 0185, 0186 (fuzz), 0187, 0191, 0192,
-0198, 0244, 0246, 0279, 0281 (fuzz). The fuzzed hunks were read: each lands in the intended spot.
+0198, 0226 (fixed by hand), 0231 (fixed by hand), 0244, 0246, 0279, 0281 (fuzz). The fuzzed hunks were read: each lands in the intended spot.
+Bluetooth (stage 6, 2026-11-13): 1226 = 0226, the kernel control `com.apple.uart.bluetooth` (SOCK_STREAM, termios via
+TIOCGETA/TIOCSETA sockopts) + /dev/cu.bluetooth, /dev/uart.bluetooth, /dev/btbridge, /dev/btwake (`btbridge=1`, in
+1244's defaults, so on unless the line says `btbridge=0` or `sweetnodefaults=1`; `btbridge=3` nodes only). Only the
+bsd/conf/files context differed (no camprobe/mdpdump lines here). 1231 = 0231, Skywalk user/kernel pipe and low-latency
+privileges for platform binaries or entitled callers (A2DP audio pipe; `sweetskypipe=0` off); sweet_amfi.c here lacks
+0219's includes, so <IOKit/IOBSD.h> and <pexpert/pexpert.h> were added by hand. Nothing else in the kernel: the QUP/GENI
+UART, the WCN3990 regulators (RPMh ldoa10 through /dev/pmem PMEM_RPMH, already in the Hot base) and the firmware load are
+userland (phone/wifi/btbridge, bt_uart.c); btbridge waits for wland's "modem ready", so Bluetooth needs Wi-Fi's userland
+up first. No `.sk` control: bluetoothd 26/27 (24B156 0x100273df4: socket(32, 1 = SOCK_STREAM, 2)) takes the termios path
+for any name but com.apple.uart.sk.bluetooth, so `BT_HCI_TRANSPORT=H4BC:POSIX:com.apple.uart.bluetooth,...` in its
+environment is enough (the env injection is a root/launchd matter, not kernel).
 
 Tried and left out (they sit on patches not in this series):
 - 0189 boot watchdog: SweetPlatformExpert.cpp/SweetFramebuffer.cpp; built on 0179's UI watchdog (`flame_wdt_stop`,
@@ -133,7 +146,7 @@ pmem (0232/0233/0277/0278) and AMFI (0194, 0219, 0240) patches against them:
 - iOS 16-only (by subject; apply clean, keep switched off): 0154/0155/0196 census, 0162 charger dump, 0171/0266/0268
   gpucc/cx snapshots, 0177/0180 stall injection, 0211 camprobe, 0220-0222 MDP dumps.
 - 0160: never (149,079 lines of 8796's iokit); its 11 real lines (IOMFB async log in SweetFramebuffer.cpp) by hand.
-- The rest (GPU A618 0129-0174, display, touch 0126+, battery, Wi-Fi, BT 0226, audio, camera, video): clean on the
+- The rest (GPU A618 0129-0174, display, touch 0126+, battery, Wi-Fi, audio, camera, video): clean on the
   map's stack, for after Gate C.
 
 ## Build
@@ -157,6 +170,9 @@ Re-checked with 1293 (151 ours, same method): tree hash f75d960 equals `sunfish-
 Re-checked with 1294 (152 ours, 1294 applied to HEAD~1 in a temporary index): tree hash 367d655 equals `sunfish-12377` HEAD db2e009, no whitespace errors.
 Re-checked with 1296 (1296 applied to HEAD~1 = 693f39a in a temporary index, `--whitespace=error`): tree hash 7a53cf1 equals `sunfish-12377` HEAD 09673bf.
 Re-checked with 1303 (applied to HEAD~1 in a temporary index, `--whitespace=error`): tree hash faf59e9 equals `sunfish-12377` HEAD 6d41d36.
+Re-checked with 1226/1231 (the tree commits reordered into file order, so they now sit after 1198; old order kept as
+branch `sunfish-12377-pre1226`; 1290 re-exported for its shifted sweet_ufs.c hunk): from c3a78d5 + 089e3fb's header, all
+164 .patch files in name order (`--whitespace=error` for 1NNN), tree hash b45ecb1 equals `sunfish-12377` HEAD c04528b.
 
 Differences from Hot's CI kept on purpose: dxb 6639065 instead of bd88697 (it adds `define_esr_ec_pac_fail_unconditionally`
 and `guard_sptm_user_pointer_ops_with_pac`, both apply under the series), Xcode 26.1 instead of runner's Xcode 26.x.

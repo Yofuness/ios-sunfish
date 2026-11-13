@@ -29,6 +29,27 @@ next: the AICMR_MATCH assert (~11 daemons), Bluetooth on 27, display (Gate D). *
 - cryptexd's sig 5 at libaxis+... (pc == lr after a `ret`, at a `cbz`): cause open (looks like a single-step trap); next:
   print ESR + the instruction word in the sweet-ux line.
 
+### 2026-11-13 17:25 Bluetooth setup added to the iOS 27.2.1 c1 root (stage 6 root part; not booted yet)
+- tools/root27/tweaks27.py, new Bluetooth part (default on; `--no-bt` / mkiosroot27 `TWEAKS_ARGS=--no-bt` off, `--remove`
+  undoes it; docs/root27.md step 4): iOS 16's sunfish-install-bt.sh + sunfish-install-btbridge.sh applied offline.
+  /var/local/bin/btbridge (107,200 B) + bluetool-stub (52,752 B) from work/userland-linux/out (plain arm64 ALL, ad hoc,
+  libSystem only, same toolchain as dash/dropbear that run on 27); /var/local/fw/bt crbtfw21.tlv 210,348 B + crnv21.bin
+  4,722 B (from ../backup/ios16-var-20261113, sha1 = ../restore/fw/vendor/bt; image only). No btbridge.snoop flag (capture off).
+- 24B156 launchd.plist (OBS): com.apple.BlueTool = [/usr/sbin/BlueTool, -R], MachServices [com.apple.BlueTool], mobile,
+  EnablePressuredExit; com.apple.bluetoothd env {OS_ACTIVITY_ENABLE_DYNAMIC=1}, mobile. Now: BlueTool -> [/var/local/bin/
+  bluetool-stub]; bluetoothd env + BT_HCI_TRANSPORT=H4BC:POSIX:com.apple.uart.bluetooth,115200, BT_BAUDRATE=115200; job
+  org.iosonpixel.btbridge (734 jobs). install -> --remove round trip gives a plist equal to the original (scratch test).
+- BlueTool XPC (OBS strings of 24B156 bluetoothd): kMsgId RunBuiltinScript with kMsgArgs script = boot / init / deepsleep /
+  reset (+ btaddress), RunCommand (command -> output); reply keys result, firmware, manufacturer, output. No
+  RunExternalScript in bluetoothd. bluetool-stub answers every kMsgId with result 0 (+ output "" for RunCommand), so all
+  are covered; no stub change. 27-only: BlueTool itself has service com.apple.BlueTool.pcie (not in the job, not in
+  bluetoothd's strings) and a `power`/`wake` script set; bluetoothd also has "BlueToolBTResult" (an override default).
+- Image: fsck -fy/-fn clean; root27-c1-at16g.simg 11,440,493,780 B (RAW 10,910 MiB, FILL 237 MiB, device writes 11,148
+  MiB), --verify 2,853,834/2,853,834 blocks equal, 0 problems.
+- Needs on the kernel side: the 0226 port (/dev/btbridge + kctl com.apple.uart.bluetooth, termios TIOCGETA/TIOCSETA),
+  btbridge=1 (already in 1244's defaults), /dev/pmem (default on). GUESS: launchd 27 honours the edited jobs as it did the
+  dropbear job (unsecure cache); dada saw launchd ignore its edits, so exec_env/exec_swap boot-args are the fallback.
+
 ### 2026-11-13 17:15 k316c2: GATE C2 PASSED: SSH into iOS 27.2.1 over USB-ECM
 - Tweaked C1 image (dropbear job, dash /bin/sh, toybox; tools/root27/tweaks27.py) written (fastboot -S 256M, 44 chunks, 115 s);
   kernel315, same cmdline. OBS: ping 192.168.7.2 3/3 at 60 s; `uname -a`: "Darwin iPhone 25.5.0 Darwin Kernel Version 25.5.0

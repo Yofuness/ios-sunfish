@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""SSH for the iOS 27 root (Gate C2): the iOS 16 setup (tools/sunfish-install-ssh.sh), applied offline to the
-loop-mounted root image, as root (mkiosroot27.sh step "tweaks", docs/root27.md).
+"""SSH and Bluetooth for the iOS 27 root (Gate C2, stage 6): the iOS 16 setups (tools/sunfish-install-ssh.sh,
+tools/sunfish-install-btbridge.sh), applied offline to the loop-mounted root image, as root (mkiosroot27.sh step
+"tweaks", docs/root27.md).
 
-  sudo python3 -I tools/root27/tweaks27.py --root MNT [--bin DIR] [--keys DIR] [--backup DIR] [--remove]
+  sudo python3 -I tools/root27/tweaks27.py --root MNT [--bin DIR] [--keys DIR] [--btfw DIR] [--backup DIR]
+                                           [--no-ssh] [--no-bt] [--remove]
 
 Installs into the image:
 - /var/local/bin/{dropbearmulti,dash,toybox} from work/userland-linux/out (tools/build-userland-linux.sh; plain
@@ -14,7 +16,17 @@ Installs into the image:
 - The launchd job org.iosonpixel.dropbear (the same dict as iOS 16) in /System/Library/xpc/launchd.plist's
   LaunchDaemons: launchd_cache_loader 27 reads that file without its .sig under launchd_unsecure_cache=1 (k315a:
   "Using unsecure cache: /System/Library/xpc/launchd.plist", "Cache sent to launchd successfully").
-No network job: the kernel brings ue0 up as 192.168.7.2/24 (patch 0075). --remove takes all of it out again.
+No network job: the kernel brings ue0 up as 192.168.7.2/24 (patch 0075).
+Bluetooth (--bt part, default on; --no-bt leaves it out):
+- /var/local/bin/{btbridge,bluetool-stub} from --bin (plain arm64, ad hoc, libSystem only) and the WCN3990 firmware
+  crbtfw21.tlv + crnv21.bin into /var/local/fw/bt (--btfw: the iOS 16 /var backup or ../restore/fw/vendor/bt; Qualcomm
+  firmware, image only, never git). No /var/local/btbridge.snoop: btsnoop capture stays off (touch it to turn it on).
+- launchd.plist as on iOS 16: com.apple.BlueTool ProgramArguments [/usr/sbin/BlueTool, -R] -> [bluetool-stub]
+  (MachService com.apple.BlueTool kept); com.apple.bluetoothd env BT_HCI_TRANSPORT=H4BC:POSIX:com.apple.uart.bluetooth,
+  115200 + BT_BAUDRATE=115200 (bluetoothd 27 reads both, research/notes/donor-census-2026-11-13.md s4); job
+  org.iosonpixel.btbridge. Needs the kernel's /dev/btbridge + kctl (xnu 0226, boot-arg btbridge=1) and /dev/pmem.
+  Off on the phone: /var/local/btbridge.off (btbridge exits; BlueTool stays the stub).
+--remove takes the parts out again (with --no-ssh / --no-bt: only the other one).
 """
 import argparse
 import os
@@ -39,6 +51,19 @@ TOYBOX_APPLETS = '''ls cat cp mv rm mkdir rmdir ln chmod chown ps kill grep sed 
 mount uname date env id whoami hexdump od dd sleep touch stat which file tee printf echo true false test basename dirname
 readlink realpath uptime free top hostname nc ping ifconfig netstat dmesg sync md5sum sha256sum tar gzip less vi'''.split()
 PROFILE = f'export PATH={PATH}\nexport PS1="sunfish27# "\n'
+# Bluetooth (the dicts of tools/sunfish-install-btbridge.sh)
+BT_JOB_KEY = '/System/Library/LaunchDaemons/org.iosonpixel.btbridge.plist'
+BT_JOB = {
+    'Label': 'org.iosonpixel.btbridge',
+    'ProgramArguments': ['/var/local/bin/btbridge'],
+    'RunAtLoad': True, 'UserName': 'root',
+    'EnvironmentVariables': {'PATH': PATH},
+}
+BT_ENV = {'BT_HCI_TRANSPORT': 'H4BC:POSIX:com.apple.uart.bluetooth,115200', 'BT_BAUDRATE': '115200'}
+BLUETOOL_ARGS = ['/usr/sbin/BlueTool', '-R']	# the 24B156 job, put back by --remove
+BT_BINS = ['btbridge', 'bluetool-stub']
+BT_FW = ['crbtfw21.tlv', 'crnv21.bin']
+BT_FW_DIRS = [os.path.normpath(os.path.join(PORT, d)) for d in ('../backup/ios16-var-20261113/var/local/fw/bt', '../restore/fw/vendor/bt')]
 
 
 def p(root, path):
@@ -73,7 +98,31 @@ def symlink(root, target, path):
     return True
 
 
-def edit_launchd(root, backup, remove):
+def by_label(jobs, label):
+    for v in jobs.values():
+        if isinstance(v, dict) and v.get('Label') == label:
+            return v
+    sys.exit(f'no {label} job in launchd.plist')
+
+
+def edit_bt(jobs, remove):
+    bt, d = by_label(jobs, 'com.apple.BlueTool'), by_label(jobs, 'com.apple.bluetoothd')
+    env = d.setdefault('EnvironmentVariables', {})
+    if remove:
+        jobs.pop(BT_JOB_KEY, None)
+        if bt.get('ProgramArguments') == ['/var/local/bin/bluetool-stub']:
+            bt['ProgramArguments'] = BLUETOOL_ARGS
+        for k in BT_ENV:
+            env.pop(k, None)
+        return 'bt jobs removed'
+    bt['ProgramArguments'] = ['/var/local/bin/bluetool-stub']
+    bt.pop('Program', None)
+    env.update(BT_ENV)
+    jobs[BT_JOB_KEY] = BT_JOB
+    return f'BlueTool -> bluetool-stub (MachServices {list(bt.get("MachServices", {}))}), bluetoothd env {env}, btbridge job set'
+
+
+def edit_launchd(root, backup, remove, ssh, bt):
     path = p(root, '/System/Library/xpc/launchd.plist')
     st = os.stat(path)
     raw = open(path, 'rb').read()
@@ -82,54 +131,35 @@ def edit_launchd(root, backup, remove):
     if backup:
         os.makedirs(backup, exist_ok=True)
         b = os.path.join(backup, 'launchd.plist.pre-tweaks')
-        if not os.path.exists(b) and JOB_KEY not in plist['LaunchDaemons']:
+        if not os.path.exists(b) and JOB_KEY not in plist['LaunchDaemons'] and BT_JOB_KEY not in plist['LaunchDaemons']:
             shutil.copy2(path, b)
-    if remove:
-        plist['LaunchDaemons'].pop(JOB_KEY, None)
-    else:
-        plist['LaunchDaemons'][JOB_KEY] = JOB
+    said = []
+    if ssh:
+        if remove:
+            plist['LaunchDaemons'].pop(JOB_KEY, None)
+        else:
+            plist['LaunchDaemons'][JOB_KEY] = JOB
+        said.append(f'dropbear job {"removed" if remove else "set"}')
+    if bt:
+        said.append(edit_bt(plist['LaunchDaemons'], remove))
     with open(path, 'wb') as f:
         plistlib.dump(plist, f, fmt=fmt)
     os.chown(path, st.st_uid, st.st_gid)
     os.chmod(path, st.st_mode & 0o7777)
-    print(f'launchd.plist: {len(plist["LaunchDaemons"])} jobs, dropbear job {"removed" if remove else "set"}')
+    print(f'launchd.plist: {len(plist["LaunchDaemons"])} jobs; ' + '; '.join(said))
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--root', required=True, help='mounted root image')
-    ap.add_argument('--bin', default=os.path.join(PORT, 'work/userland-linux/out'))
-    ap.add_argument('--keys', default=os.path.join(PORT, 'work/userland/ssh'))
-    ap.add_argument('--backup', help='host directory for launchd.plist.pre-tweaks (once)')
-    ap.add_argument('--remove', action='store_true', help='take the SSH job and files out again')
-    a = ap.parse_args()
-    root = a.root
-    if not os.path.isfile(p(root, '/System/Library/xpc/launchd.plist')):
-        sys.exit(f'{root}: no /System/Library/xpc/launchd.plist (not a mounted root?)')
-    if os.geteuid() != 0:
-        sys.exit('run as root (sudo)')
-
-    if a.remove:
-        for name in DROPBEAR_LINKS + TOYBOX_APPLETS + ['dropbearmulti', 'dash', 'toybox']:
-            f = p(root, '/private/var/local/bin/' + name)
-            if os.path.lexists(f):
-                os.unlink(f)
-        for f in ['/bin/sh', '/private/var/root/.ssh/authorized_keys', '/private/var/root/.profile']:
-            if os.path.lexists(p(root, f)):
-                os.unlink(p(root, f))
-        edit_launchd(root, a.backup, True)
-        return
-
+def install_ssh(root, bindir, keydir):
     bins = {}
     for name in ['dropbearmulti', 'dash', 'toybox']:
-        f = os.path.join(a.bin, name)
+        f = os.path.join(bindir, name)
         if not os.path.isfile(f):
             sys.exit(f'missing {f}: run tools/build-userland-linux.sh')
         bins[name] = open(f, 'rb').read()
-    pubs = sorted(n for n in os.listdir(a.keys) if n.endswith('.pub'))
+    pubs = sorted(n for n in os.listdir(keydir) if n.endswith('.pub'))
     if not pubs:
-        sys.exit(f'no *.pub in {a.keys} (tools/sunfish-install-ssh.sh makes id_ed25519)')
-    keys = b''.join(open(os.path.join(a.keys, n), 'rb').read().rstrip(b'\n') + b'\n' for n in pubs)
+        sys.exit(f'no *.pub in {keydir} (tools/sunfish-install-ssh.sh makes id_ed25519)')
+    keys = b''.join(open(os.path.join(keydir, n), 'rb').read().rstrip(b'\n') + b'\n' for n in pubs)
 
     mkdir(root, '/private/var/local', 0o755)
     mkdir(root, '/private/var/local/bin', 0o755)
@@ -146,7 +176,81 @@ def main():
     put(root, '/private/var/root/.profile', PROFILE.encode(), 0o644)
     print(f'/var/local/bin: dropbearmulti dash toybox + {len(DROPBEAR_LINKS)} dropbear links, {len(applets)} applets; '
           f'/bin/sh = dash; authorized_keys from {", ".join(pubs)}')
-    edit_launchd(root, a.backup, False)
+
+
+
+def install_bt(root, bindir, fwdir):
+    data = {}
+    for name in BT_BINS:
+        f = os.path.join(bindir, name)
+        if not os.path.isfile(f):
+            sys.exit(f'missing {f}: run tools/build-userland-linux.sh')
+        data[name] = open(f, 'rb').read()
+    fw = {}
+    for name in BT_FW:
+        f = os.path.join(fwdir, name)
+        if not os.path.isfile(f):
+            sys.exit(f'missing {f}: the BT firmware (tools/sunfish-install-bt.sh extracts it from vendor.img)')
+        fw[name] = open(f, 'rb').read()
+    mkdir(root, '/private/var/local', 0o755)
+    mkdir(root, '/private/var/local/bin', 0o755)
+    mkdir(root, '/private/var/local/fw', 0o755)
+    mkdir(root, '/private/var/local/fw/bt', 0o755)
+    for name, b in data.items():
+        put(root, '/private/var/local/bin/' + name, b, 0o755)
+    for name, b in fw.items():
+        put(root, '/private/var/local/fw/bt/' + name, b, 0o644)
+    print(f'/var/local/bin: {" ".join(BT_BINS)}; /var/local/fw/bt: ' +
+          ', '.join(f'{n} {len(b)} B' for n, b in fw.items()) + f' (from {fwdir}); btsnoop off')
+
+
+def remove_bt(root):
+    for f in ['/private/var/local/bin/' + n for n in BT_BINS] + ['/private/var/local/fw/bt/' + n for n in BT_FW]:
+        if os.path.lexists(p(root, f)):
+            os.unlink(p(root, f))
+    for d in ['/private/var/local/fw/bt', '/private/var/local/fw']:
+        if os.path.isdir(p(root, d)) and not os.listdir(p(root, d)):
+            os.rmdir(p(root, d))
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('--root', required=True, help='mounted root image')
+    ap.add_argument('--bin', default=os.path.join(PORT, 'work/userland-linux/out'))
+    ap.add_argument('--keys', default=os.path.join(PORT, 'work/userland/ssh'))
+    ap.add_argument('--btfw', help='BT firmware directory (default: the first of %s)' % ', '.join(BT_FW_DIRS))
+    ap.add_argument('--backup', help='host directory for launchd.plist.pre-tweaks (once)')
+    ap.add_argument('--no-ssh', action='store_true', help='leave the SSH part alone')
+    ap.add_argument('--no-bt', action='store_true', help='leave the Bluetooth part alone')
+    ap.add_argument('--remove', action='store_true', help='take the jobs and files out again')
+    a = ap.parse_args()
+    root = a.root
+    if not os.path.isfile(p(root, '/System/Library/xpc/launchd.plist')):
+        sys.exit(f'{root}: no /System/Library/xpc/launchd.plist (not a mounted root?)')
+    if os.geteuid() != 0:
+        sys.exit('run as root (sudo)')
+    ssh, bt = not a.no_ssh, not a.no_bt
+
+    if a.remove:
+        if ssh:
+            for name in DROPBEAR_LINKS + TOYBOX_APPLETS + ['dropbearmulti', 'dash', 'toybox']:
+                f = p(root, '/private/var/local/bin/' + name)
+                if os.path.lexists(f):
+                    os.unlink(f)
+            for f in ['/bin/sh', '/private/var/root/.ssh/authorized_keys', '/private/var/root/.profile']:
+                if os.path.lexists(p(root, f)):
+                    os.unlink(p(root, f))
+        if bt:
+            remove_bt(root)
+        edit_launchd(root, a.backup, True, ssh, bt)
+        return
+
+    if bt:
+        fwdir = a.btfw or next((d for d in BT_FW_DIRS if os.path.isfile(os.path.join(d, BT_FW[0]))), BT_FW_DIRS[0])
+        install_bt(root, a.bin, fwdir)
+    if ssh:
+        install_ssh(root, a.bin, a.keys)
+    edit_launchd(root, a.backup, False, ssh, bt)
 
 
 if __name__ == '__main__':
