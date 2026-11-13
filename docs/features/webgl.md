@@ -22,6 +22,14 @@ hangs but only 7.4 fps (GPU-bound); HexGL parked (its loader stalls on iOS Safar
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
 
+### 2026-11-12 23:25 games_fps MSAA A/B rerun (G12, upstream check): aa=0 still +17 %
+t166z (kernel166, bundle 3f069d6 with 0129 hardware MSAA resolve), same page/method as 2026-11-03 16:30, 30 s warm-up +
+60 s window, fps = median of 5 s tick beacons. A baseline 8.4 / 8.4 fps (runs 1, 3); B `?aa=0` 9.85 (run 2), run 4 9.75
+but cut short by a GPU hang (void): `present: GPU hang or fault (fence 45469, done 45453, smmu fsr 40000002 far 0):
+reset`, recovered. GPU busy 96-97 % in all. Baseline up 7.8 -> 8.4 since 0129; aa=0 gain +17 % (was +20 %).
+Reading: a force-single-sample knob (AdrenoMetal 5a50581 / UniXNU 6f9da45) would give ~+17 % in MSAA WebGL at the cost
+of edges; Optimize list, opt-in only (quality trade), not a default.
+
 ### 2026-11-03 17:49 Bridge 0130 on the phone (crS0, bundle 4C4C44D4): no fps change, kept
 games_fps 60 s, page tick beacons after warm-up: 0130 on 8.4 median (8.2-8.6), SWEET_M2V_CENTER_VARY=0 8.3 (8.0-8.8):
 same. Cube aa=1 ~20.0 fps, no artefacts; home, CC, Settings normal; no GPU fault. So the 12 derivatives aren't what
