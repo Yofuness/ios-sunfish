@@ -35,6 +35,18 @@ Path: raw Bayer through RDI (CSIPHY -> CSID -> IFE RDI write master -> memory), 
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
 
+### 2026-11-13 06:15 b63: camera preview CPU profiled (mediaserverd ~590 % in every mode; O14)
+t167zb (kernel167, boot 20261113-051618), taskinfo deltas, nothing restarted. mediaserverd / camd / backboardd: home 0 / 0 / 7 %;
+rear Photo 596 / 18 / 10 %; rear Video 584 / 25 / 10 %; front 592 / 16 / 10 %; backgrounded 0 / 0 / 7 %. ~10 threads at
+35-65 % (rootQueue.58 61-83 %, the rest unnamed), same set in every mode: the cost comes with an open capture session.
+50 pstack samples (work/b63/pstack-many.txt, a2s-decoded): ~95 % idle waits; one thread in __bzero+0x44 from CMCapture
+in 26/50 samples (large zero-fill per frame, guess); ~12 samples in a tight loop in a non-shared-cache image at
+0x1080aa000-0x1080b0000 (threads 13, 17; image not named: likely our camera plugin's software step, guess). oslog: 998 of
+1042 lines in 20 s are HALS_IOThread "Failed to start the workgroup ... Operation not supported" (~50/s, audio input).
+Earlier (gpu15b) on the CPU YCbCr path mediaserverd also grew to 32 GB and was killed for low swap every ~45 s.
+Next (O14): name the 0x1080aa000 image from the boot log's image list and symbolize with tools/pstack-sym.py; find
+what CMCapture zero-fills per frame.
+
 ### 2026-11-03 16:34 cam41 + Interactive camd: camera start 6-12 s -> 0.4 s, 14 -> 30 fps (cam41a-c, kernel161)
 camid/camd 1439e68 (PMIC wait CAMID_NO_SLG_WAIT=1 off; step retry CAM41_OFF=1 off), wland 206585d, camd job Interactive
 (now the install default, CAMD_INTERACTIVE=0 off). 3 boots, everyday args, no hangs:
