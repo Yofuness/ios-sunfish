@@ -185,3 +185,4 @@ output in /var/local.
 2026-11-13 05:16: bundle with Turnip 0114 fixed (1d7338e, dylib md5 203a4836...) installed via `tools/sunfish-metal2-install.sh work/metal2-linux/out/phone/metal2/out --no-restart`, reboot t167zb.
 2026-11-13 05:50: SWEET_YCBCR_GPU=1 removed from /var/local/mtl2-env (ssh sed) and from tools/sunfish-install-speed.sh: GPU video path opt-in again (video.md 05:50).
 2026-11-13 07:15: btbridge d61f019 installed with `python3 -I tools/flame-files.py put work/userland-linux/out/btbridge /var/local/bin/btbridge 755` + flag /var/local/btbridge.snoop created (empty, 644; reproduce: tools/build-userland-linux.sh + the put, `touch` the flag; remove the flag to stop). Captures go to /var/local/bt/btsnoop-*.log (0600, dir 0700); copies in ../logs/bt (out of git).
+2026-11-13 07:20: SWEET_YCBCR_GPU=1 is in /var/local/mtl2-env again (added by the gpu15e run) and is the default in tools/sunfish-install-speed.sh again.

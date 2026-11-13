@@ -1,5 +1,5 @@
 # Video playback and hardware decode
-**State:** 🟡 GPU colour conversion works but is opt-in (SWEET_YCBCR_GPU=1; 2026-11-13: 15 min 1080p clean, 14/24239 dropped, backboardd ~20 %; 4 video tabs exhaust GPU memory, B65). Safari plays H.264 720p with Venus hardware decode and the picture is right: an atomic flame-shot of the playing video equals ffmpeg's frame (mean |diff| 1.22; B62 was a capture artefact), 30.0 fps, 0 dropped, no lag behind the page clock in two 65 s runs (2026-11-12). Earlier: software decode 250-590 % of one core; hardware decode: research done, decoder slot loads, the Venus engine decodes H.264 bit-exact from a phone tool, 1080p at 217 fps raw, VideoToolbox decodes H.264 through our plugin in mediaserverd, 1080p 60 fps, bit-exact (stage 4b). **Updated:** 2026-11-13.
+**State:** 🟡 GPU colour conversion is the default (SWEET_YCBCR_GPU=1; 2026-11-13: 15 min 1080p clean, backboardd ~20 %; 4 video tabs no longer crash with Turnip 0114/0115 + bridge 0137). Safari plays H.264 720p with Venus hardware decode and the picture is right: an atomic flame-shot of the playing video equals ffmpeg's frame (mean |diff| 1.22; B62 was a capture artefact), 30.0 fps, 0 dropped, no lag behind the page clock in two 65 s runs (2026-11-12). Earlier: software decode 250-590 % of one core; hardware decode: research done, decoder slot loads, the Venus engine decodes H.264 bit-exact from a phone tool, 1080p at 217 fps raw, VideoToolbox decodes H.264 through our plugin in mediaserverd, 1080p 60 fps, bit-exact (stage 4b). **Updated:** 2026-11-13.
 
 ## Facts
 - The iPhone X decodes video in hardware (AppleAVD); the port has no AVD, so iOS falls back to software decoders.
@@ -88,6 +88,20 @@ Switches: VENUSCTL_PRIMARY=1 (linear NV12 on OUTPUT), VENUSCTL_DPB_SETBUF=1, VEN
 
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
+
+### 2026-11-13 07:20 gpu15e: Turnip 0115 + bridge 0137 on the phone; 4 video tabs no longer crash; GPU path default again
+Boot t167zc (kernel167, 20261113-055448), bundle with Turnip 0114/0115 + bridge 0137, SWEET_YCBCR_GPU=1. The phone-runner
+never returned its report (its context ended); numbers read from the boot log and work/0131-trace/gpu15e/ (observed):
+- "SWEET_YCBCR out rgba8, staging lazy" in backboardd [218.6], WebKit.GPU [309.9] and the restarted backboardd [541.7].
+- 1080p single tab (s2): 1653 frames, 21 dropped (20 of them at the end when paused); flame-shot vs ffmpeg not computed.
+- 4 video tabs (s3, 06:00-06:01): NO crash (only CacheDeleteExtension sig 9, a check-in timeout), 5 OutOfMemory lines in
+  the whole boot (74 before the fixes), webcam at the end shows the video playing (s3-end.jpg). Pool peak 877 MB of 940;
+  backboardd's largest "holds" line 769 MB (when in the run not attributed: the RGBA8 saving is not shown by these numbers).
+- s4 (forced pipeline failures, SWEET_PIPE_FAIL_TEST): 0 "sweet 0115" lines in the boot log, so the forced path is
+  unverified; s5 camera started 06:06, no result.
+Verdict: the 4-tab crash rate is 0/1 with the fixes (3/3 before), so SWEET_YCBCR_GPU=1 is the default again
+(tools/sunfish-install-speed.sh; the phone's mtl2-env has it). Open: the pool still runs near full with 4 videos; 0115's
+forced path unverified. iOS 16 work is parked (iOS 26/27 direction), so these stay open in the backlog.
 
 ### 2026-11-13 05:50 GPU path back to opt-in (crash rate rule); why it costs memory; fixed 0114 still crashes (gpu15d)
 Boots t167za/t167zb (kernel167, 4432/4456 mV, no reset), bundle with 0114 fixed (shipped dylib md5 203a4836...).
