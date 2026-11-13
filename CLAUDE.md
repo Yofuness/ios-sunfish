@@ -116,7 +116,7 @@ This file is the one home for the project's rules (AGENTS.md and the memory note
   are fine with a backup first and the escape boot available.
 - **Notifications:** anytime, also at night.
 - **Night** (`work/night` exists: the user sleeps, the phone is in their bedroom): keep the iOS brightness slider at
-  its minimum (DCS 32; iOS keeps it across reboots), no brightness raises or tests. Never `tools/sunfish-dim.sh`: it
+  its minimum (DCS 32; iOS keeps it across reboots), no brightness raises or tests. Never below DCS 32 and never leave the screen off on purpose: the user wants it visible on the webcam (the user, 2026-11-12); `tools/sunfish-panel-bright.sh 32` with the screen on (`flame-cmd.py 'key 0 150'`) if a boot comes up bright. Never `tools/sunfish-dim.sh`: it
   stacks on the iOS brightness and the webcam can't see the screen (`sunfish-dim.sh 100` clears a leftover dim).
   No fake-lux tests (`m fake als`) at night; once the backlight nits range is in (auto-brightness live), turn
   Auto-Brightness off with `/var/local/bin/autobright 0` when setting the flag and back on (`1`) when removing it.

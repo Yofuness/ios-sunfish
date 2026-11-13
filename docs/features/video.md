@@ -89,6 +89,18 @@ Switches: VENUSCTL_PRIMARY=1 (linear NV12 on OUTPUT), VENUSCTL_DPB_SETBUF=1, VEN
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
 
+### 2026-11-12 21:10 B62 is real (b62a): every shot differs from ffmpeg at the same burned-in frame number
+kernel162 everyday args, bundle d3316ff, venusd used (session 8: 1800 AUs, 1800 frames, 30.0 fps). Page video `muted`.
+Compared 5 shots side by side with ffmpeg's frame at the burned-in frame number (and ±2): h264-720p.mp4 frames 419, 1000,
+1489 and HLS 1080p frames 805, 1709: ALL WRONG. Static parts (colour bars, checker block, timecode box, frame counter) are
+right; the moving shapes are not: the rainbow diagonal shows as short slanted pieces at another angle/position, the grey
+vertical bar shows as a horizontal blob with stripes, stray coloured slivers lower right. No grey macroblock blocks.
+The frame counter matches but the moving content matches neither that frame nor its ±2 neighbours (observed); guess:
+stale/wrong content in the moving regions after decode (references, conversion cache, or which buffer is shown).
+Shots: work/shots/b62/*-sbs-*.png (shot | ffmpeg). 0 GPU hangs, no backboardd restart. Next: Fable read-only analysis
+(region-by-region match against nearby ffmpeg frames + code paths vtvenus -> IOSurface -> bridge -> backboardd).
+Night brightness: panel set to 8 by mistake (screen looked black to the user); back to 32, the floor (CLAUDE.md).
+
 ### 2026-11-03 20:49 B62 is video-only (rsA): non-video flame-shots clean; phone handed to the user
 WebGL cube (2 shots), stage0 page scroll, home pages, Control Center: CLEAN. One garbled link row right after a Safari
 reload while HLS played (t1-reload), clean in the next shot. h264-720p.mp4: grey bars/cross + checker block over the
