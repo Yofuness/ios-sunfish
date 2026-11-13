@@ -18,6 +18,16 @@ execs mount (pid 2), which dies with SIGBUS. MTE instructions are emulated (1294
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 17:05 launchd 27's abort: not a launchd assertion (Fable; research/notes/launchd27-abort-2026-11-13.md)
+- OBS: all 414 launchd os_assert/os_crash sites go through abort_with_reason (namespace 7 LIBXPC + text, which our kernel
+  prints); k313a shows namespace 2 (plain SIGABRT) and no sweet-ux (no fault). After "Early boot complete" launchd activates
+  the system domain (loads LaunchDaemons from the sent cache) and starts the first spawns; iOS 16 exec'd xpcproxy 36 ms after
+  the same line, launchd 27 died 39 ms after with no exec. Exclaves (exclaves_boot -> ENOTSUP accepted), jetsam watermark
+  (same on iOS 16) and boot tasks ruled out. GUESS: Libc/libxpc abort() on an unexpected kernel reply in domain activation or
+  the first posix_spawn.
+- The critical-exit panic fires before our crash printer: 1303 prints pc/backtrace + libsystem_c's crash message
+  (_gCRAnnotations) for initproc before the panic.
+
 ### 2026-11-13 16:45 k313a: fixed root written; launchd 27 runs early boot to the end (24 processes), then SIGABRT
 - Rewrite: `fastboot -S 256M flash userdata ../restore/root27/root27-c1-at16g.simg` (simg-hfs, sha256 b07d551d...), 44 chunks,
   118 s. Verify on iOS 16: 45 sampled chunks (incl. .25/.54/.77.dylddata) vs host hashes: 0 differ.
