@@ -1,0 +1,40 @@
+From 98559335fae73897052587892083d49ba9a5bc6b Mon Sep 17 00:00:00 2001
+From: Yofuness <compiledchickennuggets@gmail.com>
+Date: Thu, 12 Nov 2026 21:30:53 -0500
+Subject: [PATCH] sunfish: GetStatus returns NotReady after a failed GPU
+ recovery (0112 review)
+
+NativeAdrenoMethodGetStatus returns kIOReturnNotReady once a recovery has failed (GPU not ready and
+recoveries > 0; early-boot calls before the first bring-up are unchanged), so Turnip's keep-device path
+(turnip 0112) marks the device lost instead of keeping it. sweetstatusnr=0 turns it off.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ iokit/Kernel/arm/SweetAccelerator.cpp | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/iokit/Kernel/arm/SweetAccelerator.cpp b/iokit/Kernel/arm/SweetAccelerator.cpp
+index 6ed119d..6d5bb39 100644
+--- a/iokit/Kernel/arm/SweetAccelerator.cpp
++++ b/iokit/Kernel/arm/SweetAccelerator.cpp
+@@ -1072,6 +1072,17 @@ SweetAcceleratorUserClient::v2Method(uint32_t method, const void *in, uint32_t i
+ 	}
+ 	case NativeAdrenoMethodGetStatus: {
+ 		V2_OUT(NativeAdrenoAbiStatus);
++		/* 0282: after a FAILED recovery (GPU off, recoveries > 0; not before the first bring-up) report an error, so
++		 * Turnip's keep-device path (turnip 0112) marks the device lost. sweetstatusnr=0: off. */
++		static uint32_t notready_on = (uint32_t)-1;
++		if (notready_on == (uint32_t)-1) {
++			uint32_t v = 1;
++			PE_parse_boot_argn("sweetstatusnr", &v, sizeof(v));
++			notready_on = v;
++		}
++		if (notready_on && !sweet_gpu_ready() && sweet_gpu_recoveries() > 0) {
++			return kIOReturnNotReady;
++		}
+ 		if (sweet_gpu_lost(&fEpoch, fLastFence)) {
+ 			fFaults++;
+ 			v2_err_log("status", "work lost in a GPU reset: device lost for this client");
+-- 
+2.56.0
+
