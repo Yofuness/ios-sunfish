@@ -1,0 +1,43 @@
+From b6697455ed2c69767dfaa18f6d4e198f9581027c Mon Sep 17 00:00:00 2001
+From: Yofuness <compiledchickennuggets@gmail.com>
+Date: Fri, 13 Nov 2026 12:57:46 -0500
+Subject: [PATCH] sunfish: sweet-undef logs fatal user aborts of every process
+ (first 64), not only pid 1 (1298)
+
+---
+ osfmk/arm64/sleh.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
+index d9599ed..5337b3b 100644
+--- a/osfmk/arm64/sleh.c
++++ b/osfmk/arm64/sleh.c
+@@ -1313,6 +1313,7 @@ sweet_undef_log(arm_saved_state_t *state, uint64_t esr, uint64_t far, bool is_ab
+ {
+ 	static int sweet_undef_on = -1;
+ 	static uint32_t sweet_undef_count = 0;
++	static uint32_t sweet_abort_count = 0;  /* 1298: aborts of every process, first 64 */
+ 
+ 	if (__improbable(sweet_undef_on < 0)) {
+ 		int on = 1;
+@@ -1325,7 +1326,7 @@ sweet_undef_log(arm_saved_state_t *state, uint64_t esr, uint64_t far, bool is_ab
+ 
+ 	task_t task = current_task();
+ 	int pid = task_pid(task);
+-	if (pid != 1 && (is_abort || os_atomic_inc_orig(&sweet_undef_count, relaxed) >= 64U)) {
++	if (pid != 1 && os_atomic_inc_orig(is_abort ? &sweet_abort_count : &sweet_undef_count, relaxed) >= 64U) {
+ 		return;
+ 	}
+ 
+@@ -3289,7 +3290,7 @@ handle_user_abort(arm_saved_state_t *state, uint64_t esr, vm_offset_t fault_addr
+ 
+ 	codes[1] = fault_addr;
+ #if defined(SWEET)
+-	sweet_undef_log(state, esr, fault_addr, true); /* 1293: pid 1 only */
++	sweet_undef_log(state, esr, fault_addr, true); /* 1293; 1298: every pid, first 64 */
+ #endif
+ #if __has_feature(ptrauth_calls)
+ 	bool is_data_abort = (ESR_EC(esr) == ESR_EC_DABORT_EL0);
+-- 
+2.56.0
+
