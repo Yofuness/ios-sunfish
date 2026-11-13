@@ -1774,6 +1774,7 @@ static struct {
 	double cp_core[8];	/* v4a0: copy time per CPU (0-5 A55, 6-7 A76), counted only when the copy stayed on one core */
 	int n_core[8], n_moved;
 	unsigned acts;		/* msgq packets handled: progress for the timeout */
+	unsigned ebds;		/* vdstall: EBDs handled (venusd's stall line) */
 	int started;		/* 4a: START sent (vdec_close flushes and stops) */
 	int hevc;		/* 4e: an HEVC session (SESSION_INIT codec) */
 	uint32_t isz;		/* 4a: input buffer size */
@@ -2078,6 +2079,7 @@ static int dec_pkt(int n)
 		struct vbuf *b = find_buf(dc.in, dc.nin, p[7]);
 		if (b)
 			b->fw = 0;
+		dc.ebds++;	/* vdstall */
 		if (!vc_quiet || p[3] || !b)
 			printf("venus: EBD tag %u buf %#x error %#x filled %u flags %#x%s\n", p[6], p[7], p[3], p[5], p[9],
 			       b ? "" : " (not ours)");
@@ -2455,7 +2457,10 @@ int vdec_close(void)
 void vdec_status(struct vdec_status *st)
 {
 	*st = (struct vdec_status){ .frames = dc.frames, .eos = dc.eos, .err = dc.err, .fw_dead = fw_dead,
-		.started = dc.started, .acts = dc.acts, .cp_sum = dc.cp_sum, .cp_max = dc.cp_max, .in_size = dc.isz };
+		.started = dc.started, .acts = dc.acts, .cp_sum = dc.cp_sum, .cp_max = dc.cp_max, .in_size = dc.isz,
+		.ebds = dc.ebds };
+	for (int i = 0; i < dc.nin; i++)	/* vdstall */
+		st->in_fw += dc.in[i].fw;
 }
 
 void vdec_fw_reset(void)
