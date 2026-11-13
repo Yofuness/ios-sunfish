@@ -1,0 +1,130 @@
+From 31773e6ec4ec477f3a903303ed7afba82ec3bc22 Mon Sep 17 00:00:00 2001
+From: Yofuness <compiledchickennuggets@gmail.com>
+Date: Thu, 12 Nov 2026 23:34:29 -0500
+Subject: [PATCH] sunfish: GetStatus reports dropped work anywhere in the
+ client's unretired span (0112/0133 review)
+
+GetStatus only checked the client's last fence against the lost ranges of GPU recoveries, while
+sweet_gpu_lost moved the client's epoch past every recovery. A busy client (backboardd) that
+submits again after a recovery but before its next status check had its drop never reported, so
+Turnip 0112 and bridge 0133 missed it.
+
+Each v2 client now keeps fFirstPending, the oldest fence it submitted that GetStatus has not seen
+retired (set at Submit when 0). GetStatus checks [fFirstPending, fLastFence] against every lost
+(lo, hi] since its epoch via the new sweet_gpu_lost_span, which also returns the done fence read
+under sweet_gpu_lock (so no recovery can fall between the check and the read); fFirstPending then
+moves to done + 1, or to 0 once fLastFence is done. One fFaults++ per GetStatus as before.
+sweet_gpu_lost keeps its signature (span of one fence). Boot-arg sweetlostspan=0: old behaviour.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ bsd/dev/sweet_gpu.c                   | 16 ++++++++++++++-
+ iokit/Kernel/arm/SweetAccelerator.cpp | 28 +++++++++++++++++++++++++--
+ 2 files changed, 41 insertions(+), 3 deletions(-)
+
+diff --git a/bsd/dev/sweet_gpu.c b/bsd/dev/sweet_gpu.c
+index 223c11b..a5fcee2 100644
+--- a/bsd/dev/sweet_gpu.c
++++ b/bsd/dev/sweet_gpu.c
+@@ -1750,8 +1750,19 @@ sweet_gpu_wait_fence_ns(uint32_t fence, uint64_t timeout_ns)
+  * Did a reset since *epoch lose work of a client whose last fence is last_fence? Moves *epoch to now.
+  * (Fences are global and in submission order: the client lost work if its last one was in a lost range.)
+  */
++bool sweet_gpu_lost_span(uint64_t *epoch, uint32_t first, uint32_t last, uint32_t *done);
+ bool
+ sweet_gpu_lost(uint64_t *epoch, uint32_t last_fence)
++{
++	return sweet_gpu_lost_span(epoch, last_fence, last_fence, NULL);
++}
++
++/*
++ * 0285: the same for a span of fences [first, last]: a hit if any of them was in a lost range. *done (if given)
++ * gets the done fence, read under the same lock (0 if the GPU is down): a later reset loses only fences past it.
++ */
++bool
++sweet_gpu_lost_span(uint64_t *epoch, uint32_t first, uint32_t last, uint32_t *done)
+ {
+ 	bool hit = false;
+ 	lck_mtx_lock(&sweet_gpu_lock);
+@@ -1760,10 +1771,13 @@ sweet_gpu_lost(uint64_t *epoch, uint32_t last_fence)
+ 	}
+ 	for (; *epoch < recoveries; (*epoch)++) {
+ 		uint32_t lo = lost[*epoch % LOST_RING].lo, hi = lost[*epoch % LOST_RING].hi;
+-		if (last_fence && (int32_t)(last_fence - lo) > 0 && (int32_t)(hi - last_fence) >= 0) {
++		if (last && (int32_t)(last - lo) > 0 && (int32_t)(hi - first) >= 0) {
+ 			hit = true;
+ 		}
+ 	}
++	if (done != NULL) {
++		*done = gpu_ready ? a6_fence_read(&gpu) : 0;
++	}
+ 	lck_mtx_unlock(&sweet_gpu_lock);
+ 	return hit;
+ }
+diff --git a/iokit/Kernel/arm/SweetAccelerator.cpp b/iokit/Kernel/arm/SweetAccelerator.cpp
+index 35da67b..357fa90 100644
+--- a/iokit/Kernel/arm/SweetAccelerator.cpp
++++ b/iokit/Kernel/arm/SweetAccelerator.cpp
+@@ -61,6 +61,7 @@ void sweet_gpu_unmap_at(uint64_t iova, uint64_t len);
+ uint32_t sweet_gpu_submit_v2(const uint64_t *iova, const uint32_t *dwords, unsigned n, bool *busy);
+ int sweet_gpu_wait_fence_ns(uint32_t fence, uint64_t timeout_ns);
+ bool sweet_gpu_lost(uint64_t *epoch, uint32_t last_fence);
++bool sweet_gpu_lost_span(uint64_t *epoch, uint32_t first, uint32_t last, uint32_t *done);
+ uint64_t sweet_gpu_recoveries(void);
+ uint64_t sweet_gpu_timestamp(void);
+ int sweet_gpu_pool_alloc(uint64_t bytes, uint64_t *pa);
+@@ -153,6 +154,7 @@ class SweetAcceleratorUserClient : public IOUserClient {
+ 	uint32_t fBOCap;
+ 	uint64_t *fPageBuf;
+ 	uint64_t fEpoch, fFaults;       /* GPU resets seen; those that lost this client's work */
++	uint32_t fFirstPending;         /* 0285: oldest submit not yet seen retired by GetStatus (0: none) */
+ 	uint64_t fPoolBytes, fPoolPeak; /* GPU pool memory this client holds */
+ 	uint32_t fAllocs, fFrees, fImports, fImportFrees;	/* 0154: census for the holds line */
+ 	char fName[32];
+@@ -1073,7 +1075,12 @@ SweetAcceleratorUserClient::v2Method(uint32_t method, const void *in, uint32_t i
+ 			v2_err_log("submit", busy ? "busy (ring full)" : "not ready (GPU down)");
+ 			return busy ? kIOReturnBusy : kIOReturnNotReady;
+ 		}
++		IOLockLock(fLock);
+ 		fLastFence = fence;
++		if (fFirstPending == 0) {
++			fFirstPending = fence;
++		}
++		IOLockUnlock(fLock);
+ 		rp->fence = fence;
+ 		return kIOReturnSuccess;
+ 	}
+@@ -1105,11 +1112,28 @@ SweetAcceleratorUserClient::v2Method(uint32_t method, const void *in, uint32_t i
+ 		if (notready_on && !sweet_gpu_ready() && sweet_gpu_recoveries() > 0) {
+ 			return kIOReturnNotReady;
+ 		}
+-		if (sweet_gpu_lost(&fEpoch, fLastFence)) {
++		/* 0285: a hit if any fence in [fFirstPending, fLastFence] was lost, not only the last one (a busy client
++		 * submits again before it looks); then fFirstPending moves past the done fence. sweetlostspan=0: off. */
++		static uint32_t lostspan_on = (uint32_t)-1;
++		if (lostspan_on == (uint32_t)-1) {
++			uint32_t v = 1;
++			PE_parse_boot_argn("sweetlostspan", &v, sizeof(v));
++			lostspan_on = v;
++		}
++		IOLockLock(fLock);
++		uint32_t done = 0, first = lostspan_on && fFirstPending ? fFirstPending : fLastFence;
++		bool hit = sweet_gpu_lost_span(&fEpoch, first, fLastFence, &done);
++		if (fFirstPending && done && (int32_t)(done - fFirstPending) >= 0) {
++			fFirstPending = (int32_t)(done - fLastFence) >= 0 ? 0 : (done + 1 ? done + 1 : 1);
++		}
++		if (hit) {
+ 			fFaults++;
+-			v2_err_log("status", "work lost in a GPU reset: device lost for this client");
+ 		}
+ 		rp->faults = fFaults;
++		IOLockUnlock(fLock);
++		if (hit) {
++			v2_err_log("status", "work lost in a GPU reset: device lost for this client");
++		}
+ 		return kIOReturnSuccess;
+ 	}
+ 	case NativeAdrenoMethodSetMetadata:
+-- 
+2.56.0
+
