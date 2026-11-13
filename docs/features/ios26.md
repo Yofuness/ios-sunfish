@@ -18,6 +18,14 @@ execs mount (pid 2), which dies with SIGBUS. MTE instructions are emulated (1294
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 14:35 k310a: mount's SIGBUS is a jump to ASCII from dyld's _mach_vm_map
+- kernel310 (1299). OBS (../logs/k310/k310a-rescue.txt): no sweet-sig line (not psignal'd); `sweet-ux: pid 2 (mount) exc 1 code
+  0x101 subcode 0x6c756465686353 -> sig 10 pc 0x6c756465686353 lr 0x1857815e8`: EXC_BAD_ACCESS instruction fetch at
+  "Schedul" (ASCII, little-endian). Slide 0x52f0000 (launchd's TCO site) -> lr = cache /usr/lib/dyld `_mach_vm_map+580`,
+  after `blraaz x9` (0x1804915e4): x9, a function pointer, holds string bytes. Panic caller proc_prepareexit.cold.2.
+- Next: a Fable investigator compares the original vs rewritten cache at x9's source (rewrite corruption vs dyld's "auth
+  GOTs: unmapped" keys-off mode vs kernel shared-region mapping).
+
 ### 2026-11-13 14:20 k309a: mount's SIGBUS comes with no abort/undef log
 - kernel309 (1298). OBS (../logs/k309/k309a-rescue.txt): same as k308a (launchd 27 bootstraps, mount-phase-1, exec mount,
   "pid 2 exited -- exit reason namespace 2 subcode 0xa" 7 ms later) and no `sweet-undef:` line: the SIGBUS does not come
