@@ -170,6 +170,9 @@ This file is the one home for the project's rules (AGENTS.md and the memory note
 - **Phone access:**
   - Only one session or agent uses the phone at a time.
   - If the user says another session is on the phone, don't run `phone-runner`.
+- **Fable for hard analyses** (the user, 2026-11-13): hard read-only analyses (a bug that resisted testing, root-cause
+  workflows, adversarial reviews of risky patches) run on the Fable model (`model: 'fable'` in workflow agents, or the
+  Agent tool's model). Routine reads, builds, phone runs and patch writing keep their usual agents.
 - **Workflows / ultracode** (the user, 2026-11-12): workflow agents never touch the phone or the build VM. Phone work
   goes through one `phone-runner` at a time, builds through one `builder` at a time, both outside the fan-out.
   Workflows are for read-only analysis, research, writing patches (one tree each) and reviews.
