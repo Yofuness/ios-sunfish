@@ -23,6 +23,12 @@
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
 
+### 2026-11-13 03:35 Turnip 0113 (G2 fix) regression run t167w: clean
+kernel167 everyday args + sweetgpukill=0, bundle with Turnip 0113 + frontend 0135 (4458 mV). uisoak 2 x 450 s: 91474
+submits, G1 0, G2 0, G4 0, 0 restarts, 0 failed recoveries, max 78.7 C; 0 "submit bad", 0 DEVLOST, 0 crash lines,
+0 SNAPSYNC. "refused" lines 2016 in 16.4 min (~123/min; no normalised baseline yet). One 15 min run can't show G2 is gone
+(~1 per 400 k submits): the nightly soaks collect that.
+
 ### 2026-11-13 03:15 B53 snapshot race proven and fixed (frontend 0135)
 See backlog B53: CA's render server only commits a snapshot into a client IOSurface and replies; our IOSurfaceLock
 doesn't wait for GPU work, so the client read zeroed rows. Frontend 0135 (bundle 2e4a175): backboardd waits on the GPU

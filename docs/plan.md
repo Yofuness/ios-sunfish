@@ -49,8 +49,8 @@ stops phone work, or doubles in rate after a change (then turn that change off f
 
 ## Phone
 Claude's since 2026-11-12 21:03 (the user). Booted t167y: kernel167 (= kernel162 + xnu 0281 isb, 0282 GetStatus NotReady after a
-failed recovery, 0283 atomic flame-shot, 0284 G2 submit logging, 0285 lost span), bundle ceb6140 (+ Turnip 0112 keep VkDevice,
-frontend 0132 device limits, bridge 0133 restart redo), venusd/vtvenus 6a24d64 (stall detectors, VT QoS), wland 206585d
+failed recovery, 0283 atomic flame-shot, 0284 G2 submit logging, 0285 lost span), bundle c916fe4+ (+ Turnip 0112 keep VkDevice, 0113 G2 fix,
+frontend 0132 device limits, 0135 snapshot sync, bridge 0133 restart redo, 0134), venusd/vtvenus 6a24d64 (stall detectors, VT QoS), wland 206585d
 (HT20, Interactive, bounds checks), camd + hapticd Interactive, cam41. Everyday boot: `tools/sunfish-test.sh -k 167 TAG sweetse9=2 sweetcampmic=2 sweetswapbig=6
 sweetampreset=1 sweetpmemwc=2 sweetgpucap=512 sweetgpukill=0` (sweetgpukill=0 since 2026-11-12: backboardd survives recovered hangs with 0112; t166z was booted without it). /var/local/mtl2-env = SWEET_U0011..14=1,
 SWEET_SURF_FLUSH=1, SWEET_CULL=3 (TU_FETCH_GMEM_MIN_DRAWS=20 removed: G8) (tools/sunfish-install-speed.sh); backboardd env CA_DISABLE_LUMA_BOOST=1 CA_FORCE_TIMER=1.
