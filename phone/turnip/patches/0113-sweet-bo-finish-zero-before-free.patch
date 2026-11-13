@@ -1,0 +1,30 @@
+diff --git a/src/freedreno/vulkan/tu_knl_darwin.cc b/src/freedreno/vulkan/tu_knl_darwin.cc
+index fe555ff216f..6d85a5e2047 100644
+--- a/src/freedreno/vulkan/tu_knl_darwin.cc
++++ b/src/freedreno/vulkan/tu_knl_darwin.cc
+@@ -652,6 +652,10 @@ darwin_bo_finish(struct tu_device *dev, struct tu_bo *bo)
+       pthread_mutex_unlock(&dw.lock);
+       unsigned slot = (retire->head + retire->count) % DARWIN_RETIRED_BOS;
+       retire->entries[slot] = {bo->darwin_handle, bo->iova, bo->size, bo->map, bo->darwin_token, fence};
++      /* SweetMetal2 0113: zero the slot before the reap below can BoFree the handle: the kernel hands the lowest free
++       * handle out again, and a later memset would wipe a new BO in this slot (G2 "iova 0"). As tu_bo_make_zombie in
++       * tu_knl_drm.cc: cleared under the lock the reaper holds. The ring entry keeps its own copy. */
++      memset(bo, 0, sizeof(*bo));
+       ++retire->count;
+       ++retire->enqueued;
+       darwin_reap_locked(dev, retire);
+@@ -660,12 +664,11 @@ darwin_bo_finish(struct tu_device *dev, struct tu_bo *bo)
+       /* No reusable range is reported on error. The kernel still owns the handle
+        * and view; connection teardown must drain them, even if this record cannot fit. */
+       retire->failure = vk_device_set_lost(&dev->vk, "deferred BO queue remains full; retaining native allocation");
++      /* The BO structs live in a sparse array: zero the entry to mark it free. */
++      memset(bo, 0, sizeof(*bo));
+    }
+    pthread_mutex_unlock(&retire->lock);
+ 
+-   /* The BO structs live in a sparse array: zero the entry to mark it free. */
+-   memset(bo, 0, sizeof(*bo));
+-
+    u_rwlock_rdunlock(&dev->dma_bo_lock);
+ }
+ 
