@@ -272,6 +272,16 @@ Newest first. Earlier soaks were shorter or used other loads, so compare rates, 
 | 2026-10-31 z1 | kernel135, allocator | ~34 min, stopped early | 151 k | 0 | 3 | 2 | - |
 | 2026-10-31 soak1 | kernel134, allocator | 2 boots | ~113 k | 2 | at least 1 | not counted | - |
 
+### 2026-11-12 22:50 G2 analysis (read-only, soak n9)
+n9's G2: uptime 2259.440 s (~22:08), backboardd `DEVLOST first (turnip) ... tu_knl_darwin.cc:907: submit failed:
+0xe00002c2; submits 80745 faults 0 heap_used 293568 KB ... inflight 8`, during Maps GPU pool swings (178-286 MB, total
+548-657 MB, peak 762); no SMMU fault, hang or v2_err line; backboardd restarted 2260.009 (observed). All 8 G2s on the PC
+are backboardd with 0xe00002c2. Kernel BadArgument submit returns are all silent (SweetAccelerator.cpp:804/805/1030/
+1037-1038). Only the per-buffer iova-in-window check (:1037-1038) is plausibly reachable from Turnip's real input. Guess
+(~50 %): a submit entry built from a tu_bo already finished (darwin_bo_finish zeroes it, tu_knl_darwin.cc:667) -> iova
+below fWinBase. Rate history: kernel135 ~2 per 100 k; n7+n8 0 in ~796 k; n9 1 in 371 k (not rising). Next: xnu 0284
+logs the failing check (handle, iova, bytes, window); then fix by what it names.
+
 ### 2026-11-03 08:15 G7 GPU YCbCr path on the phone (fe2d169, kernel159)
 Observed: `SWEET YCBCR: 420f fmt 500 plane 0 1128x1504 -> gpu (offset 64 row 1152 matrix 0)` (camera, backboardd),
 `b3a8 fmt 550 plane 0 1125x1500 -> gpu`, `b3a8 fmt 550 plane 0 1536x1536 -> gpu` (WebKit.GPU), `420v fmt 500 plane 0
