@@ -4,7 +4,7 @@ tools/sunfish-install-btbridge.sh), applied offline to the loop-mounted root ima
 "tweaks", docs/root27.md).
 
   sudo python3 -I tools/root27/tweaks27.py --root MNT [--bin DIR] [--keys DIR] [--btfw DIR] [--backup DIR]
-                                           [--no-ssh] [--no-bt] [--remove]
+                                           [--wififw DIR] [--no-ssh] [--no-bt] [--no-wifi] [--remove]
 
 Installs into the image:
 - /var/local/bin/{dropbearmulti,dash,toybox} from work/userland-linux/out (tools/build-userland-linux.sh; plain
@@ -26,7 +26,13 @@ Bluetooth (--bt part, default on; --no-bt leaves it out):
   115200 + BT_BAUDRATE=115200 (bluetoothd 27 reads both, research/notes/donor-census-2026-11-13.md s4); job
   org.iosonpixel.btbridge. Needs the kernel's /dev/btbridge + kctl (xnu 0226, boot-arg btbridge=1) and /dev/pmem.
   Off on the phone: /var/local/btbridge.off (btbridge exits; BlueTool stays the stub).
---remove takes the parts out again (with --no-ssh / --no-bt: only the other one).
+Wi-Fi (--wifi part, default on; --no-wifi leaves it out; btbridge waits up to 60 s for wland's "modem ready"):
+- /var/local/bin/{wland,netsvc} (tools/sunfish-install-wifi.sh; wland libSystem only, netsvc + Foundation/CoreFoundation/
+  libobjc/SystemConfiguration), the modem + WLAN firmware into /var/local/fw/modem, the rmtfs images (modemst1/2, fsg,
+  fsc: this phone's EFS, image only, never git) into /var/local/fw/rmtfs (0700), an empty /var/local/fw/rw; --wififw:
+  the iOS 16 /var/local/fw backup. Job org.iosonpixel.wland (`wland auto`). No /var/local/wlan.conf (credentials stay
+  on the phone; wland runs without it: no join). Off on the phone: /var/local/wland.off or boot-arg sweetwifi=0.
+--remove takes the parts out again (with --no-ssh / --no-bt / --no-wifi: only the others).
 """
 import argparse
 import os
@@ -63,6 +69,17 @@ BT_ENV = {'BT_HCI_TRANSPORT': 'H4BC:POSIX:com.apple.uart.bluetooth,115200', 'BT_
 BLUETOOL_ARGS = ['/usr/sbin/BlueTool', '-R']	# the 24B156 job, put back by --remove
 BT_BINS = ['btbridge', 'bluetool-stub']
 BT_FW = ['crbtfw21.tlv', 'crnv21.bin']
+WIFI_JOB_KEY = '/System/Library/LaunchDaemons/org.iosonpixel.wland.plist'
+WIFI_JOB = {	# tools/sunfish-install-wifi.sh's dict
+    'Label': 'org.iosonpixel.wland',
+    'ProgramArguments': ['/var/local/bin/wland', 'auto'],
+    'RunAtLoad': True, 'UserName': 'root',
+    'ProcessType': 'Interactive', 'POSIXSpawnType': 'Interactive',
+    'EnvironmentVariables': {'PATH': PATH},
+}
+WIFI_BINS = ['wland', 'netsvc']
+RMTFS = ['modemst1.img', 'modemst2.img', 'fsg.img', 'fsc.img']	# not .buffer: one per phone boot (rmtfs.c)
+WIFI_FW_DIR = os.path.normpath(os.path.join(PORT, '../backup/ios16-var-20261113/var/local/fw'))
 BT_FW_DIRS = [os.path.normpath(os.path.join(PORT, d)) for d in ('../backup/ios16-var-20261113/var/local/fw/bt', '../restore/fw/vendor/bt')]
 
 
@@ -122,7 +139,7 @@ def edit_bt(jobs, remove):
     return f'BlueTool -> bluetool-stub (MachServices {list(bt.get("MachServices", {}))}), bluetoothd env {env}, btbridge job set'
 
 
-def edit_launchd(root, backup, remove, ssh, bt):
+def edit_launchd(root, backup, remove, ssh, bt, wifi):
     path = p(root, '/System/Library/xpc/launchd.plist')
     st = os.stat(path)
     raw = open(path, 'rb').read()
@@ -131,7 +148,8 @@ def edit_launchd(root, backup, remove, ssh, bt):
     if backup:
         os.makedirs(backup, exist_ok=True)
         b = os.path.join(backup, 'launchd.plist.pre-tweaks')
-        if not os.path.exists(b) and JOB_KEY not in plist['LaunchDaemons'] and BT_JOB_KEY not in plist['LaunchDaemons']:
+        if not os.path.exists(b) and JOB_KEY not in plist['LaunchDaemons'] and BT_JOB_KEY not in plist['LaunchDaemons'] \
+                and WIFI_JOB_KEY not in plist['LaunchDaemons']:
             shutil.copy2(path, b)
     said = []
     if ssh:
@@ -140,6 +158,12 @@ def edit_launchd(root, backup, remove, ssh, bt):
         else:
             plist['LaunchDaemons'][JOB_KEY] = JOB
         said.append(f'dropbear job {"removed" if remove else "set"}')
+    if wifi:
+        if remove:
+            plist['LaunchDaemons'].pop(WIFI_JOB_KEY, None)
+        else:
+            plist['LaunchDaemons'][WIFI_JOB_KEY] = WIFI_JOB
+        said.append(f'wland job {"removed" if remove else "set"}')
     if bt:
         said.append(edit_bt(plist['LaunchDaemons'], remove))
     with open(path, 'wb') as f:
@@ -204,6 +228,49 @@ def install_bt(root, bindir, fwdir):
           ', '.join(f'{n} {len(b)} B' for n, b in fw.items()) + f' (from {fwdir}); btsnoop off')
 
 
+def install_wifi(root, bindir, fwdir):
+    data = {}
+    for name in WIFI_BINS:
+        f = os.path.join(bindir, name)
+        if not os.path.isfile(f):
+            sys.exit(f'missing {f}: run tools/build-userland-linux.sh')
+        data[name] = open(f, 'rb').read()
+    modem = sorted(n for n in os.listdir(os.path.join(fwdir, 'modem')) if os.path.isfile(os.path.join(fwdir, 'modem', n)))
+    for n in ['modem.mdt', 'wlanmdsp.mbn', 'bdwlan-sunfish.bin']:
+        if n not in modem:
+            sys.exit(f'missing {fwdir}/modem/{n}')
+    for n in RMTFS:
+        if not os.path.isfile(os.path.join(fwdir, 'rmtfs', n)):
+            sys.exit(f'missing {fwdir}/rmtfs/{n}')
+    for d in ['/private/var/local', '/private/var/local/bin', '/private/var/local/fw', '/private/var/local/fw/modem',
+              '/private/var/local/fw/rw']:
+        mkdir(root, d, 0o755)
+    mkdir(root, '/private/var/local/fw/rmtfs', 0o700)
+    for name, b in data.items():
+        put(root, '/private/var/local/bin/' + name, b, 0o755)
+    size = 0
+    for n in modem:
+        b = open(os.path.join(fwdir, 'modem', n), 'rb').read()
+        size += len(b)
+        put(root, '/private/var/local/fw/modem/' + n, b, 0o644)
+    for n in RMTFS:
+        put(root, '/private/var/local/fw/rmtfs/' + n, open(os.path.join(fwdir, 'rmtfs', n), 'rb').read(), 0o600)
+    print(f'/var/local/bin: {" ".join(WIFI_BINS)}; /var/local/fw/modem: {len(modem)} files {size} B, '
+          f'/var/local/fw/rmtfs: {" ".join(RMTFS)} (from {fwdir}); no wlan.conf')
+
+
+def remove_wifi(root):
+    for f in ['/private/var/local/bin/' + n for n in WIFI_BINS] + ['/private/var/local/fw/rmtfs/' + n for n in RMTFS]:
+        if os.path.lexists(p(root, f)):
+            os.unlink(p(root, f))
+    d = p(root, '/private/var/local/fw/modem')
+    if os.path.isdir(d):
+        shutil.rmtree(d)
+    for d in ['/private/var/local/fw/rmtfs', '/private/var/local/fw/rw', '/private/var/local/fw']:
+        if os.path.isdir(p(root, d)) and not os.listdir(p(root, d)):
+            os.rmdir(p(root, d))
+
+
 def remove_bt(root):
     for f in ['/private/var/local/bin/' + n for n in BT_BINS] + ['/private/var/local/fw/bt/' + n for n in BT_FW]:
         if os.path.lexists(p(root, f)):
@@ -219,9 +286,11 @@ def main():
     ap.add_argument('--bin', default=os.path.join(PORT, 'work/userland-linux/out'))
     ap.add_argument('--keys', default=os.path.join(PORT, 'work/userland/ssh'))
     ap.add_argument('--btfw', help='BT firmware directory (default: the first of %s)' % ', '.join(BT_FW_DIRS))
+    ap.add_argument('--wififw', default=WIFI_FW_DIR, help='directory with modem/ and rmtfs/ (default: %(default)s)')
     ap.add_argument('--backup', help='host directory for launchd.plist.pre-tweaks (once)')
     ap.add_argument('--no-ssh', action='store_true', help='leave the SSH part alone')
     ap.add_argument('--no-bt', action='store_true', help='leave the Bluetooth part alone')
+    ap.add_argument('--no-wifi', action='store_true', help='leave the Wi-Fi (wland) part alone')
     ap.add_argument('--remove', action='store_true', help='take the jobs and files out again')
     a = ap.parse_args()
     root = a.root
@@ -229,7 +298,7 @@ def main():
         sys.exit(f'{root}: no /System/Library/xpc/launchd.plist (not a mounted root?)')
     if os.geteuid() != 0:
         sys.exit('run as root (sudo)')
-    ssh, bt = not a.no_ssh, not a.no_bt
+    ssh, bt, wifi = not a.no_ssh, not a.no_bt, not a.no_wifi
 
     if a.remove:
         if ssh:
@@ -242,15 +311,19 @@ def main():
                     os.unlink(p(root, f))
         if bt:
             remove_bt(root)
-        edit_launchd(root, a.backup, True, ssh, bt)
+        if wifi:
+            remove_wifi(root)
+        edit_launchd(root, a.backup, True, ssh, bt, wifi)
         return
 
     if bt:
         fwdir = a.btfw or next((d for d in BT_FW_DIRS if os.path.isfile(os.path.join(d, BT_FW[0]))), BT_FW_DIRS[0])
         install_bt(root, a.bin, fwdir)
+    if wifi:
+        install_wifi(root, a.bin, a.wififw)
     if ssh:
         install_ssh(root, a.bin, a.keys)
-    edit_launchd(root, a.backup, False, ssh, bt)
+    edit_launchd(root, a.backup, False, ssh, bt, wifi)
 
 
 if __name__ == '__main__':

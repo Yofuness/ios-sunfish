@@ -23,6 +23,17 @@
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
 
+### 2026-11-13 17:30 Wi-Fi userland (wland) added to the 27.2.1 c1 root (btbridge needs its "modem ready"; not booted)
+- tweaks27.py Wi-Fi part (default on, `--no-wifi` off, `--remove` undoes; docs/root27.md): tools/sunfish-install-wifi.sh
+  offline. /var/local/bin/wland (= the iOS 16 one, libSystem only) + netsvc (Foundation/CF/libobjc/SystemConfiguration);
+  /var/local/fw/modem 38 files 72,243,425 B and /var/local/fw/rmtfs modemst1/modemst2/fsg/fsc (0700) from
+  ../backup/ios16-var-20261113/var/local/fw (image only); empty /var/local/fw/rw; job org.iosonpixel.wland (`wland auto`,
+  root, Interactive). 735 jobs now (dropbear, wland, btbridge). No wlan.conf (OBS wland.c read_conf/join_poll: missing file
+  = no join, scan only). Install -> --remove round trip of wifi+bt on the pre-tweaks plist: equal.
+- Image: fsck clean; root27-c1-at16g.simg 11,510,015,516 B (RAW 10,977 MiB, FILL 246 MiB, device writes 11,223 MiB),
+  --verify 2,873,152/2,873,152 blocks equal, 0 problems. Supersedes the simg numbers of the 17:25 entry.
+- Coordinator note: bluetoothd 24B156 opens the kctl SOCK_STREAM (0x100273df4), matching 0226/1226.
+
 ### 2026-11-13 17:25 Bluetooth setup added to the iOS 27.2.1 c1 root (stage 6 root part; not booted yet)
 - tools/root27/tweaks27.py, new Bluetooth part (default on; `--no-bt` / mkiosroot27 `TWEAKS_ARGS=--no-bt` off, `--remove`
   undoes it; docs/root27.md step 4): iOS 16's sunfish-install-bt.sh + sunfish-install-btbridge.sh applied offline.

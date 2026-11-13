@@ -19,6 +19,10 @@
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
 
+### 2026-11-13 17:30 wland + firmware on the iOS 27.2.1 c1 root (tools/root27/tweaks27.py Wi-Fi part; not booted)
+- wland, netsvc, /var/local/fw/modem (38 files, 72 MB), rmtfs images and job org.iosonpixel.wland (`wland auto`) put
+  into ../restore/root27/root27-c1.img offline; no wlan.conf (scan only). Details and numbers: ios26.md Log, same time.
+
 ### 2026-11-03 16:34 Bounds-checked wland installed (206585d) after a QMP fix
 d7f8d59's QMP check read the mailbox size from 0x3c (bnd1: "qmp: bad mailbox 0x128 size 0", no scan, old wland restored
 for bnd2). Linux qcom_aoss.c has it at 0x34 (QMP_DESC_MCORE_MBOX_SIZE). 206585d on cam41a/b/c: associated HT20, WPA2 keys

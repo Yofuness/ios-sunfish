@@ -61,6 +61,15 @@ Steps (log in `../restore/root27/build-PROFILE.log`):
    /var/local/btbridge.snoop; touch it on the phone to capture into /var/local/bt). On the phone: `/var/local/btbridge.off`
    stops btbridge. Needs the kernel's /dev/btbridge + kctl com.apple.uart.bluetooth (xnu 0226 port, boot-arg btbridge=1,
    in the 1244 defaults) and /dev/pmem (default on). Logs: /var/local/btbridge.log, /private/var/tmp/bluetool-stub.log.
+   **Wi-Fi part** (default on; `--no-wifi` leaves it out; btbridge waits up to 60 s for wland's "modem ready" in
+   /var/local/wland.log before it powers the chip): iOS 16's tools/sunfish-install-wifi.sh offline. wland (libSystem only)
+   and netsvc (+ Foundation, CoreFoundation, libobjc, SystemConfiguration) to /var/local/bin; `--wififw DIR` (default
+   ../backup/ios16-var-20261113/var/local/fw): modem/ (38 files, 72 MB: modem.mdt/b00-b30, modemr.jsn, modemuw.jsn,
+   wlanmdsp.mbn, bdwlan-sunfish*.bin) to /var/local/fw/modem, rmtfs/{modemst1,modemst2,fsg,fsc}.img (this phone's modem
+   EFS) to /var/local/fw/rmtfs (0700; not .buffer, which is per boot), an empty /var/local/fw/rw. Job `org.iosonpixel.wland`
+   (`wland auto`, root, Interactive). All of it is Qualcomm or per-device data: image only, never git. No
+   /var/local/wlan.conf: credentials stay on the phone (wland runs without it and only scans). Off on the phone:
+   /var/local/wland.off or boot-arg sweetwifi=0. Needs /dev/pmem (0094) and, for wifid, /dev/wlan (0123).
 5. **finish**: `fsck.hfsplus -fy` (Linux name decomposition), `fsck.hfsplus -fn`, then `tools/root27/simg-hfs.py --offset 16G`
    -> `root27-PROFILE-at16g.simg` and the same with `--verify`. It reads the HFS+ volume header and allocation bitmap:
    every allocated block is RAW (zero runs of >= 16 blocks as FILL 0, chunks <= 16 MiB), free runs and everything past the
