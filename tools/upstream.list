@@ -1,15 +1,15 @@
 # Upstream projects to watch (tools/sunfish-upstream-check.sh; CLAUDE.md "Upstream check").
 # NAME  DIR (clone, outside git)  URL  BRANCH (- = the remote's default)  SURVEYED (last commit surveyed; - = never)
-ios-redfin     research/re/redfin/redfin-int   https://github.com/DenialOfGravity/ios-redfin       redfin-int  bb754a8
+ios-redfin     research/re/redfin/redfin-int   https://github.com/DenialOfGravity/ios-redfin       redfin-int  ef2252a
 iOSPlus10      research/upstream/iOSPlus10     https://github.com/akshaynexus/iOSPlus10            -           146e889
 ios-sweet      ../upstream/ios-sweet           https://github.com/dipa-studio/ios-sweet            -           45263be
 ios-flame      ../upstream/ios-flame           https://github.com/NWylynko/ios-flame               -           745c434
-UniXNU         research/re/unixnu              https://github.com/UniXNU/UniXNU                    -           dec111b
+UniXNU         research/re/unixnu              https://github.com/UniXNU/UniXNU                    -           dff2765
 metal2vulkan   research/re/m2v                 https://github.com/steelbrain/metal2vulkan          -           219f0136
 hakios-sm7150  research/upstream/hakios-sm7150 https://github.com/xorbidden/hakios-sm7150          -           049b2df
 hakios-sm8150  research/upstream/hakios-sm8150 https://github.com/nomorecoolnicknames/hakios-sm8150 -          3e7be13
-hakios-metal   research/upstream/hakios-metal  https://github.com/oosexgang/hakios-metal           -           9d52b51
-hakios-xnu     research/upstream/hakios-xnu    https://github.com/oosexgang/hakios-xnu-kernel      -           96ffbc5
-ios-fajita     research/upstream/ios-fajita    https://github.com/edi194/ios-fajita                -           0ecd69c
+hakios-metal   research/upstream/hakios-metal  https://github.com/oosexgang/hakios-metal           -           d36f329
+hakios-xnu     research/upstream/hakios-xnu    https://github.com/oosexgang/hakios-xnu-kernel      -           63fc2b4
+ios-fajita     research/upstream/ios-fajita    https://github.com/edi194/ios-fajita                -           c8076bc
 ios-sweet-build research/upstream/ios-sweet-build https://github.com/frokfrdk/ios-sweet-build      -           81a354b
-AdrenoMetal    research/re/adrenometal         https://github.com/UniXNU/AdrenoMetal                -           -
+AdrenoMetal    research/re/adrenometal         https://github.com/UniXNU/AdrenoMetal                -           73d582f

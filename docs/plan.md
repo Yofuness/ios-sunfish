@@ -35,6 +35,9 @@ Only items Claude can move now. User tasks are listed below and never gate work;
    user's decision (Questions). Meanwhile: WebGL speed (games_fps 7 fps, GPU-bound).
 5. **GPU stability**: G1 (no recovery) and G4 (backboardd restart); nightly soak; fix whichever rises (gpu.md).
 6. **Garbled and undrawn images** (B44, B53): Notes attachments, Safari tab thumbnails, Music icon, Maps glitch.
+7. **Upstream takeaways** (2026-11-12, best first; backlog U12-*): keep VkDevice after GPU restart (G4, 1 h), isb in
+   kvtop_wpreflight (0.2 h), fill [device limits] (Photos/B44, 1-2 h), YCbCr sampled in place (video CPU, 6-10 h),
+   cheap checks: submit cuts, FS constlen, cold cache, MSAA A/B. Older items: "Upstream" below.
 
 After these: small Metal test apps built here (textured cube with depth, compute), then Crossy Road (Unity), Instagram,
 Minecraft. Likely needed on the way: YUV surfaces in the bridge (G7 "planar iosurface refused"), louder speaker (B16),
@@ -74,7 +77,7 @@ Back in play now the speed focus is over: speaker volume (B16), garbled images (
 CPU (O14), camera polish (B48).
 Finished items: [completed.md](completed.md) (not auto-loaded).
 
-## Upstream (the daily check adds here; details in backlog.md)
+## Upstream, older (2026-11-01; details in backlog.md; new ones go on Priority 7)
 - Touch poll under 8 ms while touched (hakios-xnu 6d8f818; ~3.5 ms input lag, guess; needs a latency tool).
 - RPMh try-lock: retry on EBUSY, a vote can fail silently now (0.5 h; found reading ours for e5b01a0).
 - xpcproxy identity version (hakios-xnu 78b518b): first count the errors in one Safari oslog.

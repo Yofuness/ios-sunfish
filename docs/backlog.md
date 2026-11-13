@@ -58,6 +58,12 @@ Upstream survey 2026-11-01 (research/notes/upstream-2026-11-01.md; their numbers
   llvm.bitreverse (applies cleanly), 0017 heap size alignment. Later: shader-reply cache for newLibraryWithSource.
   ios-sweet: no Metal code; dipa-studio/ios-extra: private.
 
+Upstream survey 2026-11-12 (research/notes/upstream-2026-11-12.md; checked against our code and spot-checked; gains are guesses unless marked):
+- U12-1 APPLIES. UniXNU c72a8a5 keep the VkDevice after a GPU restart: ours calls vk_device_set_lost on any kernel fault-count change (mesa tu_knl_darwin.cc:1085-1087); after a recovered hang backboardd/WebKit.GPU/Maps log `DEVLOST first (turnip)` (21 boot files, observed) = our G4 restart path. Our recovery drops in-flight work (sweet_gpu.c:898) so the in-flight CB must fail cleanly. 1 h, BSD-2-Patent. Measure: sweethangtest bad-IB boot, no DEVLOST, no backboardd restart, UI keeps drawing. [phone]
+- U12-2 APPLIES. UniXNU f65660d isb between `at s1e1w` and `mrs PAR_EL1` in mmu_kvtop_wpreflight (work/src/xnu/osfmk/arm64/machine_routines_asm.s:429-430; mmu_kvtop :385-387 has it; caller loose_ends.c:111). 0.2 h, correctness, boot check only.
+- U12-3 APPLIES. AdrenoMetal a38e12a fill the [device limits] struct from the device's own answers: ours is `initLimits {}` (phone/metal2/NativeBridgeMetalFrontend.mm:2260); PhotosUICore reads maxTexture2D at +0x84 at 6 sites, so it sees 0 (lead for B44/Photos, guess). 1-2 h, MIT. Measure: Photos thumbnails/full view flame-shots. [phone]
+- U12-4 UNSETTLED. UniXNU d76f17d submit cuts at command-buffer boundaries: ours splits every 16 IBs wherever they fall (tu_knl_darwin.cc:942-951), so another process can land mid-CB on the single ring (lead for garbling/hangs, guess). Check: count splits per boot (port the split counter only), 1-2 h. [phone]
+
 ## Later (needs repeated 1 h+ tests)
 - Touch hold (2026-11-02 lat, smoothness.md): during drags touches stamped tick+1..8 start their frame no earlier than tick+9.6 (backboardd or HID queue busy during the render, guess). About 0 ms gain estimated. Confirm: catrace window with MACH_SCHED (0x0140xxxx) and UIKit 0x2b87010c/0110/0190/0194; needs a catrace filter option for those classes.
 - IOMFB frame info (2026-11-02, smoothness.md vpa/vpb): send frame-info Presentation_time so CA anchors its display links to our ticks itself (frame_info_callback 0x1882bc6d4 -> add_timing 0x18853d33c); would replace the fixed sweetvsyncphase=5000 grid lock. Only if the grid lock shows a problem.
@@ -68,6 +74,10 @@ Upstream survey 2026-11-01 (research/notes/upstream-2026-11-01.md; their numbers
 - B4 Silent resets in long app soaks (PON reason is sticky, no lead).
 - Upstream 2026-11-01, audio, LATER with B16: hakios-xnu 315e973, 14c6a78 speaker guard: we have none (audio_plugin.c; capped -20 dB). Their amp is Awinic, ours CS35L41; 3-5 h, hardware risk, baby steps. hakios-xnu 2bb073e, 9082e00 iOS microphone: plug-in imic device done (audio_plugin.c:241-246), /dev/sunfish-mic missing; 1-2 days, B23 reset risk.
 - Upstream 2026-11-01, reviews, LATER: hakios-xnu 230762c, 5429d38, 1800069. Spot check: GLINK wrap absent (phone/wifi/link.c:131,190-193), SMEM padding underflow present (phone/wifi/smem.c:97,111), the rest unchecked. Robustness only, 2-3 h read-only.
+
+- Upstream 2026-11-12, LATER: UniXNU 8f5a4e9 use DRAM outside the kernel window: XNU gets only 0x1_00000000 + 0xf8c00000 (tools/mkadt.py:23-24, ~3.9 of 6 GiB); ~1.3 GiB below 4G unused apart from holes (rmtfs, ramdisk, Venus/ADSP/pmem not checked). +~1 GiB for big apps (guess), 12-16 h, XPU reset risk, BSD-2-Patent.
+- Upstream 2026-11-12, LATER, UNSETTLED: UniXNU 7fdf1e6, 5f7172b, a9ec98c AppSync (installd takes ad-hoc IPAs, in-process ldid): real user-app installs for our own test apps (apps go to /Applications + lsreg now, apps.md:368). Not an attestation bypass; App Store IPAs stay encrypted. Idea only (GPL-3, ldid AGPL-3). Check first: does our installd accept one ad-hoc .ipa. 4-8 h.
+- Upstream 2026-11-12, LATER, UNSETTLED: UniXNU 2c40ae9 no CPU wait on syncs already on the ring (not safe as-is: their premise is a per-job WFI we removed in 0157, sweet_a6xx.c:1304-1307); UniXNU 2d0d39f/b95b4c9 lazy BOs (ours has_lazy_bos=false, tu_knl_darwin.cc:1178): count memoryless allocations first.
 
 ## Optimize (last)
 - O-launchd (2026-11-03): done: camd + hapticd Interactive; sensors (+2.8 % CPU) and btbridge (+1.8 %) reverted, no functional gain (ljA/ljB).
@@ -106,3 +116,9 @@ Upstream survey 2026-11-01 (research/notes/upstream-2026-11-01.md; verdicts chec
 - O5 display-off CPU fade when sweetpanelsleep is off.
 - O6 failed GPU hang recovery takes 3.9-12.8 s: fail faster.
 - O15 (2026-11-02) Control Center `TU_FETCH_GMEM_MIN_DRAWS`: [DONE 2026-11-02] =20 is +1.1 swaps/s over 5 boots, default in mtl2-env (cs4, smoothness.md).
+Upstream survey 2026-11-12 (research/notes/upstream-2026-11-12.md):
+- U12-5 APPLIES. AdrenoMetal 7841a9f (patch 0035, folded into 0040) sample two-plane YCbCr (fmt 500, Safari video, gpu-bugs.md:275) straight from the planes, no RGBA16F conversion pass (ours 0127/0128; 0131 in-place not kept: stall). Hand port (their metal2vulkan is newer than 720ef1ce; not run on their HW). Gain: backboardd ~45 % during video (guess). 6-10 h, MIT. Measure: backboardd CPU, GPU ms per frame, drops.
+- U12-6 UNSETTLED. UniXNU 215672b ir3 fragment consts leave pipeline space: A618 limits equal theirs (ir3_compiler.c:269-272), so it fires here if our CA/WebGL FS goes over 412 consts. Check (host, 0.5 h): constlen of backboardd's largest FS and whether the safe_constlen variant is linked. Theirs: 28.6k -> 22.1k instr (A740).
+- U12-7 UNSETTLED. UniXNU c34f018 shaders shared across VkPipelineCaches (ours one cache per making, shader_cache/driver.rs:286,310): cold-cache only. Check: time device-open and first CC open on a wiped /var/local/m2v-cache. 0.5 h. [phone]
+- U12-8 UNSETTLED. AdrenoMetal 5a50581 / UniXNU 6f9da45 single-sample knob: aa=0 gave games_fps 7.8 -> 9.5 (observed, webgl.md:65) but before 0129; rerun the aa A/B on d3316ff, off-by-default knob at most (jaggies). 0.5 h. [phone]
+- U12-9 UNSETTLED. AdrenoMetal 86fd95c, 4411df9 real purgeable discard (ours state only, attributes.rs:143-148): RAM not time. Check: Volatile bytes per process in one app session. 4-6 h. [phone]
