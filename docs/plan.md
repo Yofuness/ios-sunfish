@@ -51,13 +51,12 @@ when 27's census is clean. xnu-13 source appearing changes nothing before Gate E
 1. Stage 0 btsnoop (implementer for btbridge, builder, one phone-runner boot). 2. Stage 2 census in parallel (one
 investigator; both IPSWs are on disk, sha1 verified; extracted files under ../restore/ipsw/x/, out of git).
 3. Stage 1: VM script parameterisation, then the Sequoia 15.7 VM with Xcode 26.1 (on disk).
-4. Keep iOS 16 healthy: the B64/B65 result (gpu15e, bundle with Turnip 0115 + bridge 0137) decides whether
-   SWEET_YCBCR_GPU=1 goes back to default (video.md); no new iOS 16 feature work.
+4. Done 2026-11-13 07:20: gpu15e: 4 video tabs no longer crash; SWEET_YCBCR_GPU=1 default again (video.md). iOS 16 parked.
 
 ## Phone
 Claude's (the user, away 2026-11-13). iOS 16 everyday boot: `tools/sunfish-test.sh -k 167 TAG sweetse9=2 sweetcampmic=2
 sweetswapbig=6 sweetampreset=1 sweetpmemwc=2 sweetgpucap=512 sweetgpukill=0`; kernel167, bundle with Turnip 0114/0115 +
-bridge 0137 (gpu15e); mtl2-env SWEET_U0011..14=1, SWEET_SURF_FLUSH=1, SWEET_CULL=3 (+SWEET_YCBCR_GPU=1 while testing).
+bridge 0137 (gpu15e); mtl2-env SWEET_U0011..14=1, SWEET_SURF_FLUSH=1, SWEET_CULL=3 SWEET_YCBCR_GPU=1 (default again 2026-11-13).
 Never kill mediaserverd/camd in tests (hard reset 2026-11-13 05:10): reboot instead.
 
 ## Questions for you (Claude took the recommended path meanwhile)
