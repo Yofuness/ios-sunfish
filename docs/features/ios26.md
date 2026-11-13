@@ -28,7 +28,7 @@ not booted yet. Stage 0 btsnoop done. **Updated:** 2026-11-13.
 - iOS 16 unchanged: mkadt trees byte-identical for a fixed seed (5 flag combos); kernel167 payload byte-identical, image
   identical except avbtool's random 64-byte footer salt/digest (same for two builds of the same payload).
 - Boot: `ADT=work/boot/sunfish-26.adt tools/sunfish-boot.sh k301b work/kernel301/kernel.development.sweet ...`. Not booted yet.
-### 2026-11-13 10:20 k301a: first kernel301 RAM boot: no output, back in fastboot within ~1 min (reset, logged)
+### 2026-11-13 09:50 k301a: first kernel301 RAM boot: no output, back in fastboot within ~1 min (reset, logged)
 - Cmdline: `debug=0xc serial=3 cpus=8 keepsyms=1 -enable_kprintf_spam -noprogress rd=ufsroot0 unentitled_ios_sim_launch=1
   ignition_level=1 wdt_test=no_user_checkin launchd_unsecure_cache=1 wdt=-1 sweetmotion=0x4bf sweetrtcoff=... -v sweetgpu=0
   sweetmtl=0 ufsrw=0 rootrw=0` (iOS 16 ADT/shim via sunfish-boot.sh). Battery 4457 mV.
@@ -40,7 +40,7 @@ not booted yet. Stage 0 btsnoop done. **Updated:** 2026-11-13.
   the lock screen (as at 07:11 this morning; not rechecked).
 - Next: analysis of the boot path for a 12377 kernel (shim/Mach-O/boot_args vs Hot's loader), then an early-fb-console boot.
 
-### 2026-11-13 10:05 GATE B PASSED: kernel301 builds (Sequoia VM, builder)
+### 2026-11-13 09:45 GATE B PASSED: kernel301 builds (Sequoia VM, builder)
 - `VM_DIR=~/VMs/macos15 MACOS_VERSION=26.5 XC=/Applications/Xcode_26.1.app PATCH_DIR=xnu/patches-12377 KDK_MODE=fake
   tools/vm-build-xnu.sh 301 --clean` (8b64b9d: 26.x mirrors IOS-26-Hot's CI, dxb bd88697): exit 0, 372 s (patch stage 6 s,
   make 347 s). 7 stage scripts ran, 147/147 of our patches applied; dxb applied add_iboot_header +
