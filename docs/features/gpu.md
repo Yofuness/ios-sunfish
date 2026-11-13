@@ -23,6 +23,13 @@
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
 
+### 2026-11-13 03:15 B53 snapshot race proven and fixed (frontend 0135)
+See backlog B53: CA's render server only commits a snapshot into a client IOSurface and replies; our IOSurfaceLock
+doesn't wait for GPU work, so the client read zeroed rows. Frontend 0135 (bundle 2e4a175): backboardd waits on the GPU
+fence after the first render into a never-rendered client surface. Shadow-path shots 6/6 partly blank -> 12/12 good;
+0 waits in normal UI. Stage 2 (later): GPU-pending count in SweetSurface trapLock for every CPU reader.
+Also built: Turnip 0113 (G2: zero the tu_bo slot before its handle can be freed and reused), c916fe4.
+
 ### 2026-11-13 00:15 Bridge 0133 (U12-1b) A/B: dropped command buffers end in Error, no regressions (kdD1, kdD2 vs kdE1)
 kernel167, bundle ceb6140 (Turnip 0112 + frontend 0132 + bridge 0133), everyday args + sweetgpukill=0 sweethangtest=3000,
 uisoak 300 s each.
