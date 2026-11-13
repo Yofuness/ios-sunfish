@@ -89,6 +89,24 @@ Switches: VENUSCTL_PRIMARY=1 (linear NV12 on OUTPUT), VENUSCTL_DPB_SETBUF=1, VEN
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
 
+### 2026-11-13 04:30 GPU video path 15 min run clean; 720p/HEVC clean; two open points (gpu15)
+kernel167 (boot 20261113-031745, not rebooted), bundle as at 04:00, SWEET_YCBCR_GPU=1 added to mtl2-env + backboardd
+killed (it came back). Runs 04:04-04:29, tags gpu15a, b-*, c-*, d-*, gpu15c-camera. Evidence work/0131-trace/gpu15/.
+- A, 1080p H.264 looped ~14 min (lat.html?loop=1): 24239 frames, 14 dropped (4 in the first loop, ~0 per loop after),
+  0 G1/G2/G4, 0 crashes/restarts/refusals; GPU busy 32-33 %; pool 620-644 MB (peak 796). CPU at 1/5/9/14 min:
+  backboardd 23/19/20/19 %, mediaserverd 22/17/20/16 %, venusd 11/10/10/10 %, WebKit sum 89/27/28/26 %. One gap
+  >250 ms per loop restart (~1.2 s, max 1383 ms) and 0.9 s at the start. Flame-shot frame 50 vs ffmpeg: mean |diff| 1.27.
+  Webcam at 1/8/15 min: picture right.
+- B (one tab each, Safari killed between): h264-720p 1354 frames 1 dropped; hevc-720p 1355/2; hevc-1080p 1352/0;
+  backboardd 21-24 %, GPU busy median 26-34 %; webcam right. HEVC is software decode (WebKit 91-92 %).
+- B first pass VOID (4 media tabs left open from A): WebKit.GPU SIGSEGV after "texture refused: OutOfMemory(Device)"
+  (the known Turnip NULL write, gpu-bugs.md 03:40; fixed by 0114, not yet installed); then a relaunched Safari got
+  "device refused: OutOfMemory(Device)" (black pages) with the pool at 636-653 MB until Safari was killed again
+  (240 MB). Guess: restored media tabs hold the GPU memory, not a kernel leak (not checked).
+- C Camera (rear, Photo, dark room): preview plausible (dark noisy, no banding/green), camd 18 %, backboardd 10 %, GPU
+  7 %, but mediaserverd 601 % (no baseline taken: open).
+Open before default: camera mediaserverd A/B (SWEET_YCBCR_GPU=0 vs 1); install 0114 and force refusals.
+
 ### 2026-11-13 04:00 GPU video path works: 30 fps, 0.4 % dropped, backboardd 24 % (A3n; bundle 0394a9d)
 kernel167, bundle 0394a9d (bridge 0134 with the gate fixed: "SWEET_YCBCR_HWFILTER mode 1" logged for backboardd;
 frontend 0136: "fmt 550 ... -> cpu (XR10 on the cpu path" for backboardd and WebKit.GPU). 1080p H.264 inline ~37 s,
