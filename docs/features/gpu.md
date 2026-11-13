@@ -23,6 +23,15 @@
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
 
+### 2026-11-12 23:55 kernel167 (xnu 0285 lost span) first boot kdC1: hang recovered, backboardd kept
+kernel167 (= 162 + xnu 0281-0285), bundle 3f069d6, everyday args + sweetgpukill=0 sweethangtest=3000, uisoak 300 s:
+injecting at 104.3 s, recover2 done after 36566 us, 0285 "v2 backboardd: status work lost in a GPU reset (#1)"
+(backboardd only), 0112 "device kept (1 in 60 s, total 1)", 0 DEVLOST, backboardd PID 61 -> 61, uisoak: 26380 submits,
+G1 0 G2 0 G4 1, 0 restarts, max 77.0 C. Everyday boot t167z clean (4456 mV). Same per-process hits as kdA1/kdA2 (no other
+process had work in the dropped range in this run). Note: 0285's log text still says "device lost for this client",
+which is wrong with 0112 (the device is kept); cosmetic. Also built: xnu 0284 (logs the failing v2 submit check, G2).
+Bridge 0133 (U12-1b) reviewed twice (changes made), built in bundle ceb6140; A/B kdD/kdE running.
+
 ### 2026-11-12 23:05 Turnip 0112 A/B passes: backboardd survives a recovered GPU hang (kdA1, kdA2 vs kdB1)
 kernel165, bundle 3f069d6 (0112 + frontend 0132), everyday args + sweetgpukill=0 sweethangtest=3000, uisoak 300 s.
 | boot | 0112 | recover2 | device kept line | DEVLOST | backboardd PID | restarts | screen after |
