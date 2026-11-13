@@ -1,8 +1,8 @@
 # iOS 26 / 27 port (arm64e userland on a non-PAC SM7150)
 
-**State:** 🔬 Research done 2026-11-13 (research/notes/ios26-27-feasibility-2026-11-13.md, sections 9-10 current): one
-kernel line (xnu-12377.121.6 + 8 Darwin 27 syscalls) for both; root iOS 27.2.1 or 26.6.2 (iPhone12,1) chosen at Gate A;
-stage 0 (iOS 16 btsnoop) next. **Updated:** 2026-11-13.
+**State:** 🔬 Gate A passed for both roots (2026-11-13); root 27.2.1 if its dyld proves, else 26.6.2. Kernel series
+xnu/patches-12377 assembled (IOS-26-Hot base), not built; build VM (Sequoia + Xcode 26.1) being installed; stage 0 btsnoop
+done. **Updated:** 2026-11-13.
 
 ## Facts
 - Goal (the user, 2026-11-13): LibrePods development needs a current iOS host; target iOS 27, iOS 26 first if better.
@@ -17,6 +17,30 @@ stage 0 (iOS 16 btsnoop) next. **Updated:** 2026-11-13.
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 08:45 Stage 2 donor census: Gate A PASSED for 23G90 (26.6.2) and 24B156 (27.2.1) (one investigator)
+- Full tables: research/notes/donor-census-2026-11-13.md. Whole-cache linear sweep (26 | 27, includes data words):
+  non-hint PAC 29.63M | 34.36M (zeta audit 29.52M | 34.27M); BRAA x16,x17 in TEXT_STUBS 105,678 | 10,208 (27 nearly drops
+  __auth_stubs); writeback LDRAA 1,344 | 17, PACGA 687 | 732 (emulate); FJCVTZS 535 | 1,130, FCMA 25,274 | 25,270
+  (emulate, allowed); LRCPC2 14 | 13, CSSC 503 | 633, MOPS 3 | 3, BF16 1,179 | 1,200, I8MM 487 | 694, SHA3/512 1,385 |
+  1,420, FHM 112 | 180, MTE 13,393 | 14,293; SVE/SME/SME2/AMX 0.2-0.8M each (Accelerate, GUESS gated by hw.cpufamily).
+- Hot images (prover, 49/50): UIKitCore, CoreFoundation, Foundation, libobjc, libswiftCore, CoreBluetooth, libdispatch,
+  libxpc hold no non-native non-PAC code. Gated (OBS sites): DIT/SB (commpage bits 57/45), SHA512 in dyld (bit 31),
+  CNTVCTSS (timebase type), MTE (runtime flags), TPRO sysreg (commpage 0xc10c). Not gated: FJCVTZS in JSC C++ (JIT probes
+  FEAT_JSCVT). Prover first pass: proven 1,075,125 | 1,009,906, unlowerable 0 | 0, unproven 1 | 3,583 (27: CoreText
+  1,947, dyld 1,619: real code, dyld has unwind info for 273 of 3,423 functions). WebCore OOM at 4 GB: not proven.
+- Bluetooth (both): bluetoothd reads BT_HCI_TRANSPORT/BT_BAUDRATE env, then plist, then the ADT (iPhone12,1:
+  /arm-io/bluetooth transport-encoding 7 = PCIE Skywalk, BCM4378); boot-arg `bt-transport-override=N`; POSIX
+  "name,baud" defaults to com.apple.uart.sk.bluetooth, other names take the termios path our 0226 kctl serves, so
+  H4BC:POSIX:com.apple.uart.bluetooth works unchanged (GUESS until booted). 0xfe3b asserts are send-side, no reply-length
+  check (the 251-byte pad may not be needed); 0xfdf0 not found. bluetoothd job: no args, user mobile, 15 MachServices; the
+  signed xpc/launchd.plist (.sig) holds the jobs.
+- Kernels: 23G90 = xnu-12377.162.14; 24B156 = xnu-13432.42.3; the 8 syscalls present in 27, nosys in 26; 535
+  objc_bp_assist_cfg_np -> enosys in 27; Mach traps equal.
+- Root: 27.2.1 if the full two-pass prover (or a <= 1 day prover fix) proves 27's dyld, else 26.6.2 (judgement).
+- New stage 3 kernel items: clear DIT/SB/SHA512/SHA3/JSCVT/FCMA commpage bits, commpage 0xc10c = 0, timebase without
+  CNTVCTSS, a hw.cpufamily that keeps Accelerate off AMX/SME/BF16 paths, FEAT_JSCVT = 0. Open: launchd.plist.sig
+  enforcement on 26/27, BT plist fallback key.
+
 ### 2026-11-13 08:50 xnu/patches-12377: first Gate C series assembled (implementer; not built yet)
 - work/src/xnu-12377 branch sunfish-12377 HEAD 36b58f5 (148 commits above tag stage12377 = stage-script output + dxb 26.0
   patches). Exported: 7 stage scripts (Hot 0000/0001/0019/0020/0026/0058 + our 0002 firehose compat header = dxb bd88697's

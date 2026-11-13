@@ -28,10 +28,10 @@ bootable until iOS 26/27 is daily-usable (every boot is RAM-only; never flash).
    KDK_MODE=fake), guard against a second live VM; then a second VM `~/VMs/macos15` (Sequoia 15.7 + Xcode 26.1, 40-50 GB).
    Xcode 26.1 is on disk: ../restore/xcode/Xcode_26.1_Universal.xip (the user, 2026-11-13 06:55). **Gate B:** stock
    xnu-12377.121.6 DEVELOPMENT links (VMAPPLE smoke test, then SWEET).
-2. **Donor census** (1 d, host only, can run before stage 1): extract both IPSWs (out of git), zeta's prover on each cache
-   (PAC, FJCVTZS/FCMA/LRCPC2/CSSC/MOPS/BF16 counts), strings of bluetoothd/BlueTool/audioaccessoryd (BT_HCI_TRANSPORT,
-   com.apple.uart.bluetooth, .sk.bluetooth, bcm_vsc). **Gate A:** no unguarded ISA beyond PAC+FJCVTZS+FCMA(+BF16/I8MM/SHA3)
-   in hot code and a POSIX H4 transport path exists. Root: 27.2.1 if as clean as 26.6.2, else 26.6.2.
+2. **Donor census**: **Gate A PASSED both** (2026-11-13 08:45, research/notes/donor-census-2026-11-13.md). Root 27.2.1 if the
+   full prover proves 27's dyld (3,583 unproven words in the hot sample: dyld 1,619, CoreText 1,947; weak unwind info),
+   else 26.6.2. Kernel must hide DIT/SB/SHA512/SHA3/JSCVT/FCMA commpage bits, 0xc10c = 0, no CNTVCTSS timebase, a safe
+   hw.cpufamily. BT: BT_HCI_TRANSPORT env + bt-transport-override boot-arg in both; our H4BC:POSIX string fits.
 3. **Kernel rebase** (7-12 d): base = IOS-26-Hot xnu/patches-26 (MIT, 116/116 clean on 12377; rebase map 2026-11-13) [was: Scion's layer], UniXNU's 8-syscall patch, our 0125-0285
    without 0160's vendored tree, PAC layer (zeta plain-auth + an EL0 emulator), GiaSen facts re-implemented (no licence:
    ideas only). New tree work/src/xnu-12377, patches xnu/patches-12377/. **Gate C:** RAM-booted kernel reaches serial
