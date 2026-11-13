@@ -1594,6 +1594,17 @@ pub extern "C" fn nmb_command_buffer_error(command_buffer: *const NmbCommandBuff
     guard(0, || Ok(get(command_buffer)?.0.error_description().map_or(0, |text| copy_out(&text, out, size))))
 }
 
+/// 0133: the `MTLCommandBufferError` code of a failure the driver relayed or of a GPU restart's victim (bridge 0133), else 0.
+#[unsafe(no_mangle)]
+pub extern "C" fn nmb_command_buffer_execution_code(command_buffer: *const NmbCommandBuffer) -> u64 {
+    guard(0, || {
+        Ok(match get(command_buffer)?.0.error() {
+            Some(metal2vulkan_runtime::CommandBufferError::Execution(code)) => code,
+            _ => 0,
+        })
+    })
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn nmb_command_buffer_gpu_time(command_buffer: *const NmbCommandBuffer, end: bool) -> f64 {
     guard(0.0, || {

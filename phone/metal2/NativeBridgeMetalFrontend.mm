@@ -1699,6 +1699,10 @@ static void scheduled(void *context);
  if(self.failedLocally)return nbError(self.encodeFailure);
  if(self.status!=MTLCommandBufferStatusError)return nil;
  char text[512]={};nmb_command_buffer_error(_handle,text,sizeof text);
+ // 0133: a GPU restart's victim (bridge 0133) or another failure the driver relayed answers in Metal's domain with its code
+ // (MTLCommandBufferErrorInternal for a victim, as Metal's "Discarded (victim of GPU error/recovery)"); the rest as before.
+ const uint64_t code=nmb_command_buffer_execution_code(_handle);
+ if(code)return [NSError errorWithDomain:MTLCommandBufferErrorDomain code:(NSInteger)code userInfo:@{NSLocalizedDescriptionKey:[NSString stringWithUTF8String:text]}];
  return nbError([NSString stringWithUTF8String:text]);
 }
 // Debug groups and cache hints name work for tools and the driver's caches; they change nothing the GPU computes here.
