@@ -17,6 +17,15 @@ done. **Updated:** 2026-11-13.
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 09:45 Gate B try 1 (Sequoia VM, builder): FAILED on build plumbing, no kernel
+- VM: macOS 15.8.3 24H241, Xcode 26.1 17B55, iOS 26.1 SDK (~/VMs/macos15, 42 GB; 1.5 h install). Network OK in the VM.
+- kernel300 (stock, MACHINE_CONFIG=VMAPPLE, stage scripts only): make ran 2508 s, then `TrustCache/API.h` and
+  `CoreEntitlements/V2/API.h` not found: Hot's stage scripts 0000/0001 stage headers only for SWEET. VMAPPLE smoke dropped.
+- kernel301 (SWEET, xnu/patches-12377): stage scripts OK, dxb link_kdk + remove_applefeatures_include skipped, then our
+  fail-fast stopped at sweet-0004-sweet-machine-config.patch (makedefs/MakeInc.def:1227) after 36 s. GUESS: our dxb pin
+  6639065 vs Hot's CI bd88697 (and Hot's own build.sh patch loop). Fix: mirror Hot's xnu.yml for 26.x (implementer).
+- Script fixes from the builder: stage-only PATCH_DIR (`ls *.patch` under set -e), output glob kernel.development.*.
+
 ### 2026-11-13 09:20 Root decision: iOS 27.2.1 (one Fable investigator; research/notes/dyld27-proof-2026-11-13.md)
 - The 3,583 unproven words of 27's hot sample were not missing roots (OBS): (1) dyld/libobjc/pthread hold 250 undecodable
   words 0xd5940000/0xd5900040/0xd5900020 next to `mrs x8, S3_3_C4_C0_3` (431 sites), all gated by commpage byte 0xc10c == 4
