@@ -89,6 +89,19 @@ Switches: VENUSCTL_PRIMARY=1 (linear NV12 on OUTPUT), VENUSCTL_DPB_SETBUF=1, VEN
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
 
+### 2026-11-13 03:40 Fable trace analysis: where the GPU path's time goes (corrects 02:15)
+Per VIDEO frame command buffer (p50): GPU path 51.1 ms vs CPU path 9.8 ms (observed; the 24.2/9.0 per-frame means of
+02:15 mix video and non-video frames). The +41 ms: +25.1 ms in the one full-screen gmem pass, only in the ~20 bins under
+the video rectangle (~3,500 vs ~675 us per bin, 5.7x; same 9 draws, 0 sysmem, same pass overhead), likely the video
+quad's fragment shader (1801 instructions vs 494 on the CPU path; inferred, no per-draw spans); +13.0 ms in a per-frame
+plane-bytes staging chain for an extended-range two-plane surface (fmt 550 'b3a8' 1125x1536 in backboardd, routed to the
+GPU only by SWEET_YCBCR_GPU); +3.0 ms the NV12 conversion itself. CORRECTION to 02:15: there is no extra conversion; the
+1.40 dispatches per frame are the staging dispatch diluted over non-video frames. Bridge 0134 never ran: its gate
+!device_samples() is false on Turnip (derive.rs:822-826), no "SWEET_YCBCR_HWFILTER mode" line (so the exact-filter
+theory is untested). Leg A's crash: WebKit.GPU SIGSEGV after the kernel refused it an 8 MB buffer (pool 773/940 MB,
+0122's 160 MB reserve): tu_cs_reserve_space fails and Turnip writes through cs->cur == NULL (backboardd held 611 MB).
+Next: 0134 gate fix + frontend 0136 (550/551 back to the CPU path), then one traced leg with TU_SWEET_DRAW_TRACE=1.
+
 ### 2026-11-13 02:15 Traced A/B: bridge 0134 (hardware filter) does not help; the draws are the cost
 n10 boot (kernel167), bundle f7b0c92, 1080p H.264 in Safari inline ~37 s per leg, MESA_GPU_TRACES=print SWEET_PIPESTATS=1.
 | leg | GPU busy | backboardd submits/5 s, mean ms | FB fps | dropped (page) | backboardd CPU |

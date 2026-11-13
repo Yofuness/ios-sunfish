@@ -273,6 +273,14 @@ Newest first. Earlier soaks were shorter or used other loads, so compare rates, 
 | 2026-10-31 z1 | kernel135, allocator | ~34 min, stopped early | 151 k | 0 | 3 | 2 | - |
 | 2026-10-31 soak1 | kernel134, allocator | 2 boots | ~113 k | 2 | at least 1 | not counted | - |
 
+### 2026-11-13 03:40 New: Turnip NULL write when a command-stream BO allocation is refused (pool exhaustion)
+Boot 20261113-001648 at 4544.9 s (GPU video path test): the kernel refused WebKit.GPU an 8 MB buffer (pool 773 of
+940 MB, xnu 0122's "avail < len + 160 MB" rule); 32 ms later WebKit.GPU SIGSEGV far 0x0: tu_cs_add_bo fails inside
+tu_cs_reserve_space and tu_emit_subpass_begin stores through cs->cur == NULL (objdump: str right after bl
+tu_cs_reserve_space). backboardd then SIGBUS. Rate: only seen under the GPU video path's memory use (backboardd 611 MB).
+Fix idea: make the darwin CS allocation failure a clean VK_ERROR_OUT_OF_DEVICE_MEMORY (Turnip upstream checks
+cs->cur after reserve in some paths) or keep a reserve for CS BOs. Not urgent while the GPU video path is off.
+
 ### 2026-11-13 03:00 G2 mechanism (Fable read-only; judge cut off by a usage limit)
 The failing entry's size (0x2b4) is intact, only the pointed-to tu_bo was zeroed (darwin_submit_add_entries copies
 bo->darwin_handle / bo->iova from the BO, size from the cs entry; tu_knl_darwin.cc:694-707). Top candidate (guess, the
