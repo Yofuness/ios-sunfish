@@ -1,0 +1,32 @@
+From 7d94ebc90a561bc2c3e7e524ca55beb03d7a1ed7 Mon Sep 17 00:00:00 2001
+From: Yofuness <compiledchickennuggets@gmail.com>
+Date: Fri, 13 Nov 2026 17:42:17 -0500
+Subject: [PATCH] sunfish: Sandbox stand-in grants PRIV_GLOBAL_PROC_INFO to
+ platform binaries (iOS 27 bluetoothd) (1306)
+
+---
+ bsd/kern/sweet_amfi.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/bsd/kern/sweet_amfi.c b/bsd/kern/sweet_amfi.c
+index 81901c9..d3b630f 100644
+--- a/bsd/kern/sweet_amfi.c
++++ b/bsd/kern/sweet_amfi.c
+@@ -547,6 +547,14 @@ sweet_sandbox_priv_grant(kauth_cred_t cred __unused, int priv)
+ 	if (priv == PRIV_WORK_INTERVAL || sweet_priv_entitled(priv)) {
+ 		return 0;
+ 	}
++	/*
++	 * 1306: PRIV_GLOBAL_PROC_INFO (proc_info on other users' processes) for platform binaries: iOS 27 bluetoothd
++	 * (user mobile) asks for it right after its kctl connect (k316a: "privilege 1002 denied", then restarts).
++	 * Apple's Sandbox grants it by entitlement; here every root-volume binary is platform (sweet_amfi above).
++	 */
++	if (priv == PRIV_GLOBAL_PROC_INFO && csproc_get_platform_binary(current_proc())) {
++		return 0;
++	}
+ 	char name[20];
+ 	proc_selfname(name, sizeof(name));
+ 	for (int i = 0; i < sweet_priv_logged_count; i++) {
+-- 
+2.56.0
+

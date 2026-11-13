@@ -23,6 +23,11 @@
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
 
+### 2026-11-13 17:50 iOS 27.2.1 (k316a): chip up via btbridge, bluetoothd connects to the kctl, then restarts
+- Same btbridge + bluetool-stub as iOS 16, on the 27 root (tools/root27/tweaks27.py). btbridge: firmware + NVM loaded, HCI
+  reset OK, bd_addr 39:90:21:74:07:00; bluetoothd connects ("unit 1"), sends HCI init, privilege 1002 denied, exits and
+  restarts. Details in ios26.md (17:50). Next: 1306 + btsnoop + bluetoothd log.
+
 ### 2026-11-13 17:30 Wi-Fi userland (wland) added to the 27.2.1 c1 root (btbridge needs its "modem ready"; not booted)
 - tweaks27.py Wi-Fi part (default on, `--no-wifi` off, `--remove` undoes; docs/root27.md): tools/sunfish-install-wifi.sh
   offline. /var/local/bin/wland (= the iOS 16 one, libSystem only) + netsvc (Foundation/CF/libobjc/SystemConfiguration);

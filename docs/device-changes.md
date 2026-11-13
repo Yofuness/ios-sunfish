@@ -209,3 +209,6 @@ output in /var/local.
 - 2026-11-13 17:09 PLANNED: rewrite ufsroot1 (userdata) with the tweaked C1 image ../restore/root27/root27-c1-at16g.simg (dropbear + /bin/sh + launchd job, tools/root27/tweaks27.py, 11,440,100,564 bytes) via fastboot -S 256M flash userdata. User approved overwrite 10:55. Reproduce: same command.
 - 2026-11-13 17:12 DONE: ufsroot1 rewrite with root27-c1-at16g.simg (tweaked, dropbear job), fastboot -S 256M, 115 s, 44 sparse chunks OKAY.
 - 2026-11-13 17:17 k316c2 RAM boot (kernel315, 27.2.1 tweaked C1 root, rd=ufsroot1 ufsrw=1 rootrw=1): SSH over USB-ECM to iOS 27.2.1 works (dropbear /var/local/bin). No on-device file changes by us. iOS 16 back via k167nofstab17.
+- 2026-11-13 17:32 PLANNED: rewrite ufsroot1 (userdata) with ../restore/root27/root27-c1-at16g.simg (11,510,015,516 B; SSH+BT+Wi-Fi root) via fastboot -S 256M flash userdata; user approved overwrite 10:55.
+- 2026-11-13 17:34 DONE: ufsroot1 rewrite with root27-c1-at16g.simg (BT+Wi-Fi), fastboot -S 256M, 121 s, 44 chunks OKAY.
+- 2026-11-13 17:35 k316a RAM boot (kernel316, root27-c1-at16g BT+Wi-Fi root on ufsroot1, rd=ufsroot1 ufsrw=1 rootrw=1); the root booted writes /var/local logs and /var on ufsroot1 only. iOS 16 back via k167nofstab18 17:40. Reproduce: tools/sunfish-boot.sh k316a (see plan).

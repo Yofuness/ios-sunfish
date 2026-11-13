@@ -84,6 +84,7 @@ New patches (1290+):
   libsystem_darwin os_lockdown_mode_enabled() asserts on ENOENT (k314a: launchd 27 abort after early boot).
 - `1305` AMFI stand-in answers op 0x66 (amfi_launch_constraint_matches_process): result {error_code 0 = AICMR_MATCH};
   libxpc's LWCR check os_crashed ~11 daemons without it (k315a; research/notes/aicmr-2026-11-13.md). `sweetamfi27=0` off.
+- `1306` Sandbox stand-in grants PRIV_GLOBAL_PROC_INFO (1002) to platform binaries (k316a: bluetoothd denied, restarts).
 - No patch needed for iOS 27's CPU-feature checks: DIT, SB, SHA512, SHA3, JSCVT, FCMA commpage bits and their
   hw.optional.arm.FEAT_* sysctls come from the ID registers of the boot CPU (an A55) in osfmk/arm/commpage/commpage.c;
   A55/A76 lack all six (GUESS from the Arm TRM values; check `sysctl hw.optional` on the first 12377 boot); commpage 0x10c is zeroed and unwritten; the user timebase type is USER_TIMEBASE_SPEC (CNTVCT, not

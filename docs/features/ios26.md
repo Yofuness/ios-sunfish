@@ -18,6 +18,18 @@ next: the AICMR_MATCH assert (~11 daemons), Bluetooth on 27, display (Gate D). *
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 17:50 k316a: AICMR gone; Wi-Fi modem + BT chip up on iOS 27; bluetoothd connects, then restarts
+- Root with ssh+bt+wifi tweaks written (44 chunks, 121 s); kernel316 (1226 BT kctl, 1231 Skywalk pipe, 1305 AMFI 0x66). OBS
+  (../logs/boots/20261113-173517.log; /var/local/btbridge.log, wland.log, /var/tmp/bluetool-stub.log on the 27 root):
+  AICMR asserts 0 (k315a: dozens); remaining CRASHes: cryptexd 15, SiriAUSP/MauiAUSP/MacinTalkAUSP/KonaSynthesizer 14 each,
+  MessagesBlastDoor 4, terminusd 3. wland: "boot: modem ready after 100 ms", WLAN FW READY, WMI READY, scanning (no
+  credentials). btbridge: 3000000 baud, crbtfw21.tlv 210348 B in 3.3 s, crnv21.bin, hci-reset OK, bd_addr 39:90:21:74:07:00,
+  "ready, pumping". launchd honoured the edited Apple jobs: bluetool-stub answered boot/init (manufacturer 29); bluetoothd
+  "kernel control connected (unit 1)" at 231.2 s; then "SWEET Sandbox: bluetoothd privilege 1002 denied" and unit 1 gone at
+  234.7 s; bluetoothd re-exec'd (4x), second connect 297.7 s sent 0x0c03/0x1001/0x1002/0x1009/0x1003. No power-state lines,
+  no bluetoothd CRASH (it exits). SpringBoard/backboardd loop (sweetgpu=0). No panic.
+- Next: 1306 (grant PRIV_GLOBAL_PROC_INFO = 1002 to platform binaries), btsnoop on, bluetoothd's own log over SSH.
+
 ### 2026-11-13 17:30 AICMR assert = AMFI op 0x66 unanswered by our stand-in (Fable; research/notes/aicmr-2026-11-13.md)
 - OBS: libxpc `__xpc_token_satisfies_lwcr` (0x1805de624..) zeroes a 0x404-byte `amfi_interface_constraint_match_result_t`
   {u32 error_code; char message[0x400]}, calls `amfi_launch_constraint_matches_process` -> `__mac_syscall("AMFI", 0x66,
