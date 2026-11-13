@@ -23,6 +23,18 @@
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
 
+### 2026-11-13 04:50 B53 background tab tiles: hibernated tabs come only from the disk cache (read-only analysis)
+Observed (disassembly research/re/b53/tabctl*.s): -[BrowserRootViewController snapshotContentProviderForTab:] returns
+nil for a hibernated tab (or !contentIsReadyForSnapshot) that is not blank, so TabController's snapshot request never
+reaches WKWebView or the render server; such a tile can only come from the TabSnapshotCache file (_writeSnapshotImage:
+withIdentifier:, KTX/ASTC via ImageIO when MG key ji56BO1mUeT7Qg9RO7Er9w is true, else PNG; read-back failures go to
+Safari's os_log "TabSnapshots", not our live log). The compass tile means a nil image, not empty pixels, so 0135 can't
+help. Boot 20261113-001648: Safari was a fresh process (WebKit started 10522.9 s) when tabs-fix.png was shot, so both
+background tabs were restored hibernated; no SNAPSYNC line during the overview. Guess (medium): test kills (psx,
+backboardd restarts) end Safari before its file queue writes those tabs (real iOS would show placeholders too); less
+likely, the KTX/ASTC write or read-back fails here. Next: phone test with `oslog -l -n MobileSafari` (TabSnapshots):
+two tabs, tab overview, Home, psx-kill Safari, relaunch, overview; list *-v*.ktx/png in Safari's container.
+
 ### 2026-11-13 03:35 Turnip 0113 (G2 fix) regression run t167w: clean
 kernel167 everyday args + sweetgpukill=0, bundle with Turnip 0113 + frontend 0135 (4458 mV). uisoak 2 x 450 s: 91474
 submits, G1 0, G2 0, G4 0, 0 restarts, 0 failed recoveries, max 78.7 C; 0 "submit bad", 0 DEVLOST, 0 crash lines,
