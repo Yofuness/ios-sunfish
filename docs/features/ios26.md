@@ -1,6 +1,6 @@
 # iOS 26 / 27 port (arm64e userland on a non-PAC SM7150)
 
-**State:** 🔬 Gate A passed for both roots (2026-11-13); root 27.2.1 if its dyld proves, else 26.6.2. Kernel series
+**State:** 🔬 Gate A passed for both roots (2026-11-13); root = iOS 27.2.1 (24B156; its dyld proves with 3 prover fixes). Kernel series
 xnu/patches-12377 assembled (IOS-26-Hot base), not built; build VM (Sequoia + Xcode 26.1) being installed; stage 0 btsnoop
 done. **Updated:** 2026-11-13.
 
@@ -17,6 +17,18 @@ done. **Updated:** 2026-11-13.
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 09:20 Root decision: iOS 27.2.1 (one Fable investigator; research/notes/dyld27-proof-2026-11-13.md)
+- The 3,583 unproven words of 27's hot sample were not missing roots (OBS): (1) dyld/libobjc/pthread hold 250 undecodable
+  words 0xd5940000/0xd5900040/0xd5900020 next to `mrs x8, S3_3_C4_C0_3` (431 sites), all gated by commpage byte 0xc10c == 4
+  (new TPRO mode in 27; 2/3 = 26's msr S3_6_C15_C1_5 path, 0 = skip); (2) 27 moved objc stubs out of the images into
+  unowned exec bytes after libobjcMsgSendN.dylib's __text (10,336 PAC words there, missed by section-based sweeps);
+  (3) a prover edge case: a noreturn bl at the end of __text.
+- Prototype switches --tpro, --gaps, --noreturn-end (~30 lines over zeta's prover; scripts copied to
+  research/notes/dyld27-proof-scripts/): 27 hot set 3,583 -> 1 unproven (the libsystem_m float constant, also in 26);
+  26 control unchanged. Without them 1,619 + 1,947 real PAC words (RETAB/BLRAA/PACIA) would SIGILL on the A76.
+- Kernel: commpage 0xc10c = 0; optional EL0 undef emulation of `mrs S3_3_C4_C0_3` -> 0. Stage 4: fold the switches into a
+  tools/ prover and run the whole cache per image (WebCore needs > 4 GB), GUESS 0.5 day.
+
 ### 2026-11-13 08:45 Stage 2 donor census: Gate A PASSED for 23G90 (26.6.2) and 24B156 (27.2.1) (one investigator)
 - Full tables: research/notes/donor-census-2026-11-13.md. Whole-cache linear sweep (26 | 27, includes data words):
   non-hint PAC 29.63M | 34.36M (zeta audit 29.52M | 34.27M); BRAA x16,x17 in TEXT_STUBS 105,678 | 10,208 (27 nearly drops
