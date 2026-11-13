@@ -41,10 +41,10 @@ index 541b9f8..a47a7df 100644
            VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT) {
           assert(tu_cs_is_empty(&secondary->cs));
 diff --git a/src/freedreno/vulkan/tu_cs.cc b/src/freedreno/vulkan/tu_cs.cc
-index 2331c2f..a2f9fc5 100644
+index 2331c2f..a89ea8d 100644
 --- a/src/freedreno/vulkan/tu_cs.cc
 +++ b/src/freedreno/vulkan/tu_cs.cc
-@@ -9,6 +9,32 @@
+@@ -9,6 +9,38 @@
  #include "tu_rmv.h"
  #include "tu_suballoc.h"
  
@@ -61,7 +61,9 @@ index 2331c2f..a2f9fc5 100644
 +}
 +
 +/* 0114 test knob: SWEET_CS_FAIL_TEST=N refuses every Nth new BO of a
-+ * command-buffer (GROW mode) cs, as if the kernel had refused it. 0 = off.
++ * command-buffer cs (GROW mode, and the SUB_STREAM "draw sub cs" behind
++ * tu_cs_alloc / tu_cs_begin_sub_stream; one shared counter), as if the kernel
++ * had refused it. Pipeline and shader cs are left alone. 0 = off.
 + */
 +static bool
 +tu_sweet_cs_fail_test(const struct tu_cs *cs)
@@ -70,14 +72,18 @@ index 2331c2f..a2f9fc5 100644
 +   static uint32_t count;
 +   if (every < 0)
 +      every = debug_get_num_option("SWEET_CS_FAIL_TEST", 0);
-+   return every > 0 && cs->mode == TU_CS_MODE_GROW &&
-+          p_atomic_inc_return(&count) % every == 0;
++   if (every <= 0)
++      return false;
++   if (cs->mode != TU_CS_MODE_GROW &&
++       !(cs->mode == TU_CS_MODE_SUB_STREAM && cs->name && !strcmp(cs->name, "draw sub cs")))
++      return false;
++   return p_atomic_inc_return(&count) % every == 0;
 +}
 +
  /* There is a limit to IB size supported by HW,
   * which appears to be 0x0fffff.
   */
-@@ -129,6 +155,9 @@ tu_cs_get_offset(const struct tu_cs *cs)
+@@ -129,6 +161,9 @@ tu_cs_get_offset(const struct tu_cs *cs)
  uint64_t
  tu_cs_get_cur_iova(const struct tu_cs *cs)
  {
@@ -87,7 +93,7 @@ index 2331c2f..a2f9fc5 100644
     if (cs->mode == TU_CS_MODE_EXTERNAL)
        return cs->external_iova + ((char *) cs->cur - (char *) cs->start);
     return tu_cs_current_bo(cs)->iova + ((char *) cs->cur - (char *) tu_cs_current_bo(cs)->map);
-@@ -257,6 +286,10 @@ tu_cs_add_entries(struct tu_cs *cs, struct tu_cs *target)
+@@ -257,6 +292,10 @@ tu_cs_add_entries(struct tu_cs *cs, struct tu_cs *target)
     assert(cs->mode == TU_CS_MODE_GROW);
     assert(target->mode == TU_CS_MODE_GROW);
  
@@ -98,7 +104,7 @@ index 2331c2f..a2f9fc5 100644
     if (!tu_cs_is_empty(cs))
        tu_cs_add_entry(cs);
  
-@@ -278,7 +311,7 @@ void
+@@ -278,7 +317,7 @@ void
  tu_cs_begin(struct tu_cs *cs)
  {
     assert(cs->mode != TU_CS_MODE_SUB_STREAM);
@@ -107,7 +113,7 @@ index 2331c2f..a2f9fc5 100644
  }
  
  /**
-@@ -290,6 +323,10 @@ tu_cs_end(struct tu_cs *cs)
+@@ -290,6 +329,10 @@ tu_cs_end(struct tu_cs *cs)
  {
     assert(cs->mode != TU_CS_MODE_SUB_STREAM);
  
@@ -118,7 +124,7 @@ index 2331c2f..a2f9fc5 100644
     if (cs->mode == TU_CS_MODE_GROW && !tu_cs_is_empty(cs))
        tu_cs_add_entry(cs);
  }
-@@ -299,6 +336,9 @@ tu_cs_set_writeable(struct tu_cs *cs, bool writeable)
+@@ -299,6 +342,9 @@ tu_cs_set_writeable(struct tu_cs *cs, bool writeable)
  {
     assert(cs->mode == TU_CS_MODE_GROW || cs->mode == TU_CS_MODE_SUB_STREAM);
  
@@ -128,14 +134,16 @@ index 2331c2f..a2f9fc5 100644
     if (cs->writeable != writeable) {
        assert(!cs->cond_stack_depth);
        if (cs->mode == TU_CS_MODE_GROW && !tu_cs_is_empty(cs))
-@@ -345,16 +385,19 @@ tu_cs_begin_sub_stream_aligned(struct tu_cs *cs, uint32_t count,
+@@ -345,16 +391,21 @@ tu_cs_begin_sub_stream_aligned(struct tu_cs *cs, uint32_t count,
        result = tu_cs_reserve_space(cs, count * size + (size - tu_cs_get_offset(cs)) % size);
        cs->start += (size - tu_cs_get_offset(cs)) % size;
     }
 -   if (result != VK_SUCCESS)
 +   if (result != VK_SUCCESS) {
-+      /* 0114: freshly declared, nothing owned yet so safe to zero. */
-+      memset(sub_cs, 0, sizeof(*sub_cs));
++      /* 0114: freshly declared, nothing owned yet. Unlike upstream's memset,
++       * keep device (callers read cs->device) and a valid mode.
++       */
++      tu_cs_init_external(sub_cs, cs->device, NULL, NULL, 0, cs->writeable);
 +      tu_cs_fail(sub_cs, result);
        return result;
 +   }
@@ -151,7 +159,7 @@ index 2331c2f..a2f9fc5 100644
  
     return VK_SUCCESS;
  }
-@@ -412,6 +455,13 @@ struct tu_cs_entry
+@@ -412,6 +463,13 @@ struct tu_cs_entry
  tu_cs_end_sub_stream(struct tu_cs *cs, struct tu_cs *sub_cs)
  {
     assert(cs->mode == TU_CS_MODE_SUB_STREAM);
@@ -165,7 +173,7 @@ index 2331c2f..a2f9fc5 100644
     assert(sub_cs->start == cs->cur && sub_cs->end == cs->reserved_end);
     tu_cs_sanity_check(sub_cs);
  
-@@ -437,9 +487,13 @@ tu_cs_end_sub_stream(struct tu_cs *cs, struct tu_cs *sub_cs)
+@@ -437,9 +495,13 @@ tu_cs_end_sub_stream(struct tu_cs *cs, struct tu_cs *sub_cs)
  VkResult
  tu_cs_reserve_space(struct tu_cs *cs, uint32_t reserved_size)
  {
@@ -179,7 +187,7 @@ index 2331c2f..a2f9fc5 100644
           return VK_ERROR_OUT_OF_HOST_MEMORY;
        }
  
-@@ -461,9 +515,18 @@ tu_cs_reserve_space(struct tu_cs *cs, uint32_t reserved_size)
+@@ -461,9 +523,18 @@ tu_cs_reserve_space(struct tu_cs *cs, uint32_t reserved_size)
  
        /* switch to a new BO */
        uint32_t new_size = MAX2(cs->next_bo_size, reserved_size);
@@ -200,7 +208,7 @@ index 2331c2f..a2f9fc5 100644
  
        if (cs->cond_stack_depth) {
           cs->reserved_end = cs->cur + reserved_size;
-@@ -491,7 +554,10 @@ tu_cs_reserve_space(struct tu_cs *cs, uint32_t reserved_size)
+@@ -491,7 +562,10 @@ tu_cs_reserve_space(struct tu_cs *cs, uint32_t reserved_size)
  
     if (cs->mode == TU_CS_MODE_GROW) {
        /* reserve an entry for the next call to this function or tu_cs_end */
@@ -212,7 +220,7 @@ index 2331c2f..a2f9fc5 100644
     }
  
     return VK_SUCCESS;
-@@ -506,6 +572,12 @@ uint64_t tu_sweet_cs_trims;
+@@ -506,6 +580,12 @@ uint64_t tu_sweet_cs_trims;
  void
  tu_cs_reset(struct tu_cs *cs)
  {
@@ -225,7 +233,7 @@ index 2331c2f..a2f9fc5 100644
     if (cs->mode == TU_CS_MODE_EXTERNAL) {
        assert(!cs->read_only.bo_count && !cs->read_write.bo_count &&
               !cs->refcount_bo && !cs->entry_count);
-@@ -513,6 +585,9 @@ tu_cs_reset(struct tu_cs *cs)
+@@ -513,6 +593,9 @@ tu_cs_reset(struct tu_cs *cs)
        return;
     }
  
@@ -235,7 +243,7 @@ index 2331c2f..a2f9fc5 100644
     for (uint32_t i = 0; i + 1 < cs->read_only.bo_count; ++i) {
        TU_RMV(resource_destroy, cs->device, cs->read_only.bos[i]);
        tu_bo_finish(cs->device, cs->read_only.bos[i]);
-@@ -550,7 +625,7 @@ tu_cs_reset(struct tu_cs *cs)
+@@ -550,7 +633,7 @@ tu_cs_reset(struct tu_cs *cs)
     }
     if (trimmed && cs->sweet_initial_bo_size)
        cs->next_bo_size = cs->sweet_initial_bo_size;
@@ -244,7 +252,7 @@ index 2331c2f..a2f9fc5 100644
        cs->start = cs->cur = cs->reserved_end = cs->end = NULL;
  
     if (cs->read_only.bo_count) {
-@@ -576,6 +651,9 @@ tu_cs_emit_data_nop(struct tu_cs *cs,
+@@ -576,6 +659,9 @@ tu_cs_emit_data_nop(struct tu_cs *cs,
                      uint32_t size,
                      uint32_t align_dwords)
  {
@@ -255,7 +263,7 @@ index 2331c2f..a2f9fc5 100644
     tu_cs_emit_pkt7(cs, CP_NOP, total_size);
  
 diff --git a/src/freedreno/vulkan/tu_cs.h b/src/freedreno/vulkan/tu_cs.h
-index e93dea4..f7d0be3 100644
+index e93dea4..91ef771 100644
 --- a/src/freedreno/vulkan/tu_cs.h
 +++ b/src/freedreno/vulkan/tu_cs.h
 @@ -96,6 +96,7 @@ struct tu_cs
@@ -304,7 +312,7 @@ index e93dea4..f7d0be3 100644
  uint64_t
  tu_cs_get_cur_iova(const struct tu_cs *cs);
  
-@@ -199,8 +224,13 @@ tu_cs_draw_state(struct tu_cs *sub_cs, struct tu_cs *cs, uint32_t size)
+@@ -199,8 +224,15 @@ tu_cs_draw_state(struct tu_cs *sub_cs, struct tu_cs *cs, uint32_t size)
  {
     struct tu_cs_memory memory;
  
@@ -312,15 +320,17 @@ index e93dea4..f7d0be3 100644
 -   tu_cs_alloc(sub_cs, size, 1, &memory);
 +   VkResult result = tu_cs_alloc(sub_cs, size, 1, &memory);
 +   if (result != VK_SUCCESS) {
-+      /* 0114: freshly declared, nothing owned yet so safe to zero. */
-+      memset(cs, 0, sizeof(*cs));
++      /* 0114: freshly declared, nothing owned yet. Unlike upstream's memset,
++       * keep device (callers read cs->device) and a valid mode.
++       */
++      tu_cs_init_external(cs, sub_cs->device, NULL, NULL, 0, sub_cs->writeable);
 +      tu_cs_fail(cs, result);
 +      return (struct tu_draw_state) {};
 +   }
     tu_cs_init_external(cs, sub_cs->device, memory.map, memory.map + size,
                         memory.iova, memory.writeable);
     tu_cs_begin(cs);
-@@ -315,6 +345,12 @@ tu_cs_get_space(const struct tu_cs *cs)
+@@ -315,6 +347,12 @@ tu_cs_get_space(const struct tu_cs *cs)
  static inline void
  tu_cs_reserve(struct tu_cs *cs, uint32_t reserved_size)
  {
@@ -333,7 +343,7 @@ index e93dea4..f7d0be3 100644
     if (cs->mode != TU_CS_MODE_GROW) {
        assert(tu_cs_get_space(cs) >= reserved_size);
        assert(cs->reserved_end == cs->end);
-@@ -327,9 +363,13 @@ tu_cs_reserve(struct tu_cs *cs, uint32_t reserved_size)
+@@ -327,9 +365,13 @@ tu_cs_reserve(struct tu_cs *cs, uint32_t reserved_size)
        return;
     }
  
