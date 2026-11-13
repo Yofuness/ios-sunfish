@@ -14,6 +14,7 @@ feature changes state). Rules: [CLAUDE.md](../CLAUDE.md).
 | [reference/](reference/) | register dumps and hardware notes ([adreno618-notes.md](reference/adreno618-notes.md), [charger-regs.md](reference/charger-regs.md)) |
 | [recovery.md](recovery.md) | back to stock Android on the Pixel 4a |
 | [setup.md](setup.md) | from a stock Pixel 4a to the current iOS state, step by step |
+| [root27.md](root27.md) | building the iOS 27.2.1 root image (tools/mkiosroot27.sh) |
 | [device-changes.md](device-changes.md) | every change made on the phone and what reproduces it |
 | [archive/](archive/) | the old status tables ([status-2026-10-28.md](archive/status-2026-10-28.md)), the flame docs ([archive/flame/](archive/flame/)) and the sweet docs ([archive/sweet/](archive/sweet/)) |
 

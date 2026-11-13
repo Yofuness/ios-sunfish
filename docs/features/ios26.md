@@ -17,6 +17,26 @@ CPUs, UFS, HFS root mounted read-only, launchd exec'd (k301b); iOS 16's launchd 
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 11:25 27.2.1 C1 root image built and PAC-rewritten (tools/mkiosroot27.sh, docs/root27.md)
+- Extract: `ipsw extract --dmg fs|sys|app` 85 s + `ipsw fw aea` 97 s (SystemOS key via --fcs-key .pem, OS key online from
+  wkms, saved as .aea.key) -> root-src/: OS 9.27 GB, SystemOS 6.18 GB, AppOS 16 MB (UDIF/APFS, read with apfs-fuse).
+  Uncompressed: OS 13.3 GB (System 10.6, staged_system_apps 1.15, Applications 0.43), SystemOS 7.2 GB (cache 7.0 incl. 1.25 GB .symbols).
+- `--profile c1` (13 GiB image): no apps/assets/localizations/ML weights (C1_EXCLUDES) -> 11 GB used, 2.2 GB free.
+  Times: copy 89 s, layout 122 s (1045 cryptex files linked into /, 12 _PanicOnCrash renamed), cache rewrite 87 s,
+  tree rewrite 437 s (jobs 3), fsck 24 s, sparse 141 s: ~15 min.
+- Cache (zeta rewrite, proof from 10:50, no --page-shift): 33,558,075 edits in 70 of 80 files, 1 FIPS seal
+  (libcorecrypto; _noasm/_trace fail Apple's own contract, left as shipped), hard links intact (link count 2). WebCore and
+  MLIR_ML (proof OOM) and the 97 unproven words (34 in TEXT_STUBS islands, 10,174 stub words lowered) keep PAC: SIGILL if run.
+- Tree (zeta rewrite-zeta-userland-tree, vendored to tools/root27 + sunfish_pac's TPRO/noreturn-end fixes): 2,557 images
+  (1,837 executables, 658 bundles, 61 dylibs, dyld), 6,388,290 edits, 2 refused: DriverKit libsystem_platform_debug (1
+  braaz unproven) and CoreTime PeerTimeSyncPlugin (cdhash in no IPSW trust cache); both stay arm64e. Without the TPRO fix
+  /usr/lib/dyld was refused (863 unproven, first run). Originals in ../restore/root27/orig-c1 (1.2 GB).
+- fsck.hfsplus -fy fixed the root folder count (Linux hfsplus), then -fn OK. Out (not in git): root27-c1.img (13 GiB, 11 GB
+  allocated), root27-c1.simg and root27-c1-at16g.simg (10.4 GB each: 10.4 GiB RAW, 237 MiB FILL, rest DONT_CARE, +16 GiB
+  DONT_CARE head). Nothing written to the phone.
+- Open: zeta marks executables CS_RUNTIME + platform id 26 (macOS AMFI rules), untested with sweet_amfi; no trust cache made
+  (kernel needs none, note s2); full profile (28G) not built yet; C2 items (dropbear job, sweet-root-tweaks TODOs) not in.
+
 ### 2026-11-13 11:00 kernel302 built (1290 root on any UFS minor, 1291 TPRO emulation)
 - 1290: rd=ufsrootN picks the minor (ufsrootminor=N overrides); minor 2 = userdata byte range ufsrootbase/ufsrootcount
   (4 KiB aligned, ro unless ufsrw=1). 1291: Hot's sleh EL0 emulator returns 0 for `mrs S3_3_C4_C0_3` and steps over the 3
