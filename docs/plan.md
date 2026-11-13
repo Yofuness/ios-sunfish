@@ -57,8 +57,10 @@ ufsrw=1 rootrw=1 launchd_unsecure_cache=1 ignition_level=1 cs_integrity_skip=1 s
 1. AICMR fixed (1305, k316a); cryptexd's trap (single-step-like at libaxis) still open.
 2. Stage 6: DONE up to pairing (kernel317 + 1226/1231/1305/1306, tweaks27 bt/wifi, btctl): iOS 27 pairs with the laptop,
    A2DP/AVRCP/HFP connect (18:35). Next: AirPods (U-AP2, user home tonight), AACP decode; LE scan sees 0 adverts (check).
-3. Stage 5 (Gate D): display (IOMFB/framebuffer path for SpringBoard), touch, then the GPU; identity N104 (uname shows
-   iPhone10,3); full root profile (PosterBoard, mediaanalysisd missing in C1).
+3. Stage 5 (Gate D), plan in research/notes/gate-d-plan-2026-11-13.md: SpringBoard aborts only because the C1 root
+   dropped *.car (UIKit artwork); backboardd already opens AppleCLCD, falls back after 30 s without an accelerator and
+   swaps; IOMFB 27 swap record (0x6e0) already parsed by Hot 0141. Now: root profile "d" (keeps *.car, PosterBoard), boot
+   kernel317 with sweetfb_noconsole=2: pass = lock screen on the webcam. Then touch; GPU later. Keep D22AP identity.
 4. Cleanup: the debug patches 1293/1298/1299/1302/1303 stay (off switches); MTE emulation stays as a net.
 
 ## Phone

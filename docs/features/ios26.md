@@ -18,6 +18,15 @@ Bluetooth on 27 pairs (btctl + laptop, A2DP/AVRCP/HFP up, 18:35); next: AirPods 
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 18:55 Gate D plan (Fable; research/notes/gate-d-plan-2026-11-13.md)
+- OBS: SpringBoard's 8/8 crashes (pc 0x23dc231fc) abort with "The UIKit artwork manager should never be nil ...
+  UIKit_Artwork.bundle inside UIKitCore.framework is missing": the C1 profile excludes *.car (mkiosroot27.sh:79).
+  backboardd: opens AppleCLCD, polls IOAcceleratorES 302x/30 s, gives up, display on, IOCoreSurfaceRoot, SwapBegin/SwapEnd
+  (sel 5 in 0/1760), then 2 swaps/5 s. IOMFB 27 swap record 0x6e0 B = the iOS 26 layout + 0x158 (Hot 0141 parses it).
+  27 QuartzCore has a software renderer path (strings); no port has run a CPU-only desktop yet (GUESS medium).
+- Plan: root profile "d" keeping *.car + PosterBoard; boot kernel317 with sweetgpu=0 sweetmtl=0 sweetfb_noconsole=2;
+  pass = SpringBoard stays up, SWEET FB swap lines, lock screen on the webcam. Hot 0142 (IOSurface sels) only if needed.
+
 ### 2026-11-13 18:35 k317c: BLUETOOTH PAIRING WORKS ON iOS 27.2.1 (btctl, phone-initiated SSP with the laptop glizzy)
 - kernel317 + 27 root (ssh+bt+wifi tweaks), btctl (1b824ff) copied over SSH. OBS: `btctl power on` -> "power: on", address
   39:90:21:74:07:00; `btctl scan 20 -c` found "glizzy" 00:A5:54:B6:9B:1B (classic) at 2 s; LE scan: CoreBluetooth powered
