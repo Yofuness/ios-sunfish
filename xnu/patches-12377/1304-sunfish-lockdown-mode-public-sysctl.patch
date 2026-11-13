@@ -1,0 +1,32 @@
+From 98692948c80f2936aa1ceaa40a0b6865026c80ac Mon Sep 17 00:00:00 2001
+From: Yofuness <compiledchickennuggets@gmail.com>
+Date: Fri, 13 Nov 2026 16:49:17 -0500
+Subject: [PATCH] sunfish: security.mac.lockdown_mode_state_public for iOS 27's
+ os_lockdown_mode_enabled (1304)
+
+---
+ bsd/kern/lockdown_mode.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/bsd/kern/lockdown_mode.c b/bsd/kern/lockdown_mode.c
+index 1c104b3..63473a4 100644
+--- a/bsd/kern/lockdown_mode.c
++++ b/bsd/kern/lockdown_mode.c
+@@ -39,6 +39,14 @@ int lockdown_mode_state = 0;
+ 
+ SYSCTL_DECL(_security_mac);
+ SYSCTL_INT(_security_mac, OID_AUTO, lockdown_mode_state, CTLFLAG_RD | CTLFLAG_LOCKED, &lockdown_mode_state, 0, "Lockdown Mode state");
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++/*
++ * 1304: iOS 27's libsystem_darwin os_lockdown_mode_enabled() reads "security.mac.lockdown_mode_state_public" and
++ * asserts (abort) on ENOENT; launchd 27 died there (k314a). Same value, readable by anybody.
++ */
++SYSCTL_INT(_security_mac, OID_AUTO, lockdown_mode_state_public, CTLFLAG_RD | CTLFLAG_ANYBODY | CTLFLAG_LOCKED,
++    &lockdown_mode_state, 0, "Lockdown Mode state (public)");
++#endif
+ 
+ __startup_func
+ void
+-- 
+2.56.0
+

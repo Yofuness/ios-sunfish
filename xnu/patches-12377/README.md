@@ -80,6 +80,8 @@ New patches (1290+):
   24B156, + the task's sr_slide) and the main image's __crash_info message (`sweetcrinfo` = offset from its Mach-O header,
   default 0x85fa8 = launchd 24B156); 0 turns each off. abort_with_payload_internal logs `sweet-abort1:` (ns, code,
   flags, reason) for pid 1, first 4. Notes: research/notes/launchd27-abort-2026-11-13.md section 4.
+- `1304` sysctl `security.mac.lockdown_mode_state_public` (= lockdown_mode_state, anybody may read): iOS 27's
+  libsystem_darwin os_lockdown_mode_enabled() asserts on ENOENT (k314a: launchd 27 abort after early boot).
 - No patch needed for iOS 27's CPU-feature checks: DIT, SB, SHA512, SHA3, JSCVT, FCMA commpage bits and their
   hw.optional.arm.FEAT_* sysctls come from the ID registers of the boot CPU (an A55) in osfmk/arm/commpage/commpage.c;
   A55/A76 lack all six (GUESS from the Arm TRM values; check `sysctl hw.optional` on the first 12377 boot); commpage 0x10c is zeroed and unwritten; the user timebase type is USER_TIMEBASE_SPEC (CNTVCT, not

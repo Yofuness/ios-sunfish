@@ -18,6 +18,14 @@ execs mount (pid 2), which dies with SIGBUS. MTE instructions are emulated (1294
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 17:25 k314a: launchd 27's abort = missing sysctl security.mac.lockdown_mode_state_public
+- kernel314 (1303 crash report). OBS (../logs/k314/k314a-rescue.txt): `sweet-crashmsg: pid 1 (launchd) libsystem_c:
+  "lockdown_mode.c:os_lockdown_mode_enabled_block_invoke:47: No such file or directory"`; bt: libsystem_kernel __pthread_kill
+  <- libsystem_c abort <- ... <- libdispatch dispatch_once <- libsystem_darwin os_lockdown_mode_enabled+44 <- launchd
+  func_100024e00/100020aac/10002d6cc (slide 0x4ae0000, mh 0x1041a0000). The block (0x23cbbf260) does
+  sysctlbyname("security.mac.lockdown_mode_state_public"); 12377 only has security.mac.lockdown_mode_state.
+- 1304 adds the _public alias (same variable, CTLFLAG_ANYBODY). kernel315 next.
+
 ### 2026-11-13 17:05 launchd 27's abort: not a launchd assertion (Fable; research/notes/launchd27-abort-2026-11-13.md)
 - OBS: all 414 launchd os_assert/os_crash sites go through abort_with_reason (namespace 7 LIBXPC + text, which our kernel
   prints); k313a shows namespace 2 (plain SIGABRT) and no sweet-ux (no fault). After "Early boot complete" launchd activates
