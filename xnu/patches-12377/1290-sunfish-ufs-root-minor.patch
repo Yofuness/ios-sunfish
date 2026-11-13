@@ -1,0 +1,149 @@
+From d8025100e36ca8afd85b07dfd4f54d58c6f57917 Mon Sep 17 00:00:00 2001
+From: Yofuness <compiledchickennuggets@gmail.com>
+Date: Fri, 13 Nov 2026 10:35:51 -0500
+Subject: [PATCH] sunfish: root on any sweet_ufs minor (rd=ufsroot1/2,
+ ufsrootminor=N) and a byte-range minor 2 from ufsrootbase=/ufsrootcount=
+ (1290)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ bsd/dev/sweet_ufs.c           | 53 ++++++++++++++++++++++++++++++-----
+ iokit/bsddev/IOKitBSDInit.cpp |  9 +++---
+ 2 files changed, 51 insertions(+), 11 deletions(-)
+
+diff --git a/bsd/dev/sweet_ufs.c b/bsd/dev/sweet_ufs.c
+index 06ff805..e42b9e9 100644
+--- a/bsd/dev/sweet_ufs.c
++++ b/bsd/dev/sweet_ufs.c
+@@ -110,7 +110,7 @@ static struct {
+ 	uint8_t lun;
+ 	uint8_t tag;
+ 	uint64_t first_block, nblocks;          /* partition, in 4 KiB device blocks */
+-	uint32_t secsize[2];                    /* logical sector size for the BSD layer, per minor (0185) */
++	uint32_t secsize[3];                    /* logical sector size for the BSD layer, per minor (0185, 1290) */
+ 	bool writable;                          /* boot-arg ufsrw=1 */
+ 	bool cache;                             /* boot-arg ufscache=1 */
+ 	bool wait;                              /* boot-arg ufswait=1 */
+@@ -327,8 +327,15 @@ ufs_sync_cache(void)
+ #define UFS_DATA_MIN            262144u         /* 1 GiB, else minor 1 is not made */
+ static uint64_t ufs_data_count;                 /* 0: no minor 1 */
+ 
++/*
++ * 1290: minor 2 is any block range of the partition, from boot-args ufsrootbase= and ufsrootcount= (bytes, 4 KiB
++ * aligned, relative to the partition start like minor 0), e.g. a contiguous root image file inside /var. Off unless
++ * ufsrootcount is set. It may overlap minor 1: never mount both read-write.
++ */
++static uint64_t ufs_range_base, ufs_range_count; /* blocks; count 0: no minor 2 */
++
+ /* 0185: each minor has its own sector size, so an HFS mount on one never changes the other's block numbers. */
+-#define UFS_SECSIZE(dev)        su.secsize[minor(dev) == 1]
++#define UFS_SECSIZE(dev)        su.secsize[MIN((unsigned int)minor(dev), 2u)]
+ 
+ /* Block range of a minor, relative to the partition. False for minors that do not exist. */
+ static bool
+@@ -346,6 +353,13 @@ ufs_minor_range(dev_t dev, uint64_t *base, uint64_t *count)
+ 		*base = UFS_DATA_BASE;
+ 		*count = ufs_data_count;
+ 		return true;
++	case 2:
++		if (!ufs_range_count) {
++			return false;
++		}
++		*base = ufs_range_base;
++		*count = ufs_range_count;
++		return true;
+ 	default:
+ 		return false;
+ 	}
+@@ -784,7 +798,7 @@ sweet_ufs_init(void)
+ 	}
+ 	su.dma_pa = ptoa_64(pn);
+ 	su.lun = 0;
+-	su.secsize[0] = su.secsize[1] = DEV_BSIZE;
++	su.secsize[0] = su.secsize[1] = su.secsize[2] = DEV_BSIZE;
+ 
+ 	lck_mtx_lock(&sweet_ufs_lock);
+ 	error = ufs_take_over_host();
+@@ -826,6 +840,23 @@ sweet_ufs_init(void)
+ 		printf("SWEET UFS: data region minor 1: base %u count %llu blocks (%llu GiB)\n",
+ 		    UFS_DATA_BASE, ufs_data_count, ufs_data_count * UFS_BLOCK >> 30);
+ 	}
++	/* 1290: the range minor 2, ending before the guard and the log areas like minor 1. */
++	uint64_t rbase = 0, rcount = 0;
++	PE_parse_boot_argn("ufsrootbase", &rbase, sizeof(rbase));
++	PE_parse_boot_argn("ufsrootcount", &rcount, sizeof(rcount));
++	uint64_t rlimit = su.nblocks - MIN(su.nblocks, (uint64_t)(UFS_DATA_GUARD + UFS_RESCUE_TAIL));
++	if (rcount && (((rbase | rcount) % UFS_BLOCK) || rbase / UFS_BLOCK >= rlimit ||
++	    rcount / UFS_BLOCK > rlimit - rbase / UFS_BLOCK)) {
++		printf("SWEET UFS: range minor 2 off: base %llu count %llu bytes unaligned or past block %llu\n",
++		    rbase, rcount, rlimit);
++	} else if (rcount) {
++		ufs_range_base = rbase / UFS_BLOCK;
++		ufs_range_count = rcount / UFS_BLOCK;
++		devfs_make_node(makedev(su.bmajor, 2), DEVFS_BLOCK, UID_ROOT, GID_OPERATOR, 0640, "ufsroot2");
++		devfs_make_node(makedev(su.cmajor, 2), DEVFS_CHAR, UID_ROOT, GID_OPERATOR, 0640, "rufsroot2");
++		printf("SWEET UFS: range minor 2: base %llu count %llu blocks (%llu MiB)\n",
++		    ufs_range_base, ufs_range_count, ufs_range_count * UFS_BLOCK >> 20);
++	}
+ 	/* Only now, with the partition bounds known, can writes be allowed. */
+ 	su.writable = (rw != 0);
+ 	su.ready = true;
+@@ -1090,11 +1121,11 @@ sweet_log_start(void)
+ 	}
+ }
+ 
+-/* Root device for rd=ufsroot0 (IOFindBSDRoot). */
+-int sweet_ufs_rootdev(dev_t *dev);
++/* Root device for rd=ufsroot0..2 (IOFindBSDRoot). */
++int sweet_ufs_rootdev(dev_t *dev, int rd_minor);
+ 
+ int
+-sweet_ufs_rootdev(dev_t *dev)
++sweet_ufs_rootdev(dev_t *dev, int rd_minor)
+ {
+ 	if (!su.ready) {
+ 		int error = sweet_ufs_init();
+@@ -1102,7 +1133,15 @@ sweet_ufs_rootdev(dev_t *dev)
+ 			return error;
+ 		}
+ 	}
+-	*dev = su.bdev;
++	/* 1290: boot-arg ufsrootminor=N roots on minor N (default: the digit of rd=ufsrootN, so rd=ufsroot0 is minor 0). */
++	uint32_t m = (uint32_t)rd_minor;
++	PE_parse_boot_argn("ufsrootminor", &m, sizeof(m));
++	uint64_t base, nblk;
++	if (m > 2 || !ufs_minor_range(makedev(su.bmajor, m), &base, &nblk)) {
++		printf("SWEET UFS: root minor %u does not exist\n", m);
++		return ENXIO;
++	}
++	*dev = makedev(su.bmajor, m);
+ 	return 0;
+ }
+ #endif /* ARM64_BOARD_CONFIG_SWEET */
+diff --git a/iokit/bsddev/IOKitBSDInit.cpp b/iokit/bsddev/IOKitBSDInit.cpp
+index 833d522..f30b131 100644
+--- a/iokit/bsddev/IOKitBSDInit.cpp
++++ b/iokit/bsddev/IOKitBSDInit.cpp
+@@ -799,14 +799,15 @@ IOFindBSDRoot( char * rootName, unsigned int rootNameSize,
+ //
+ //	SWEET: root on a GPT partition of the internal UFS (bsd/dev/sweet_ufs.c)
+ //
+-	if (strcmp(rdBootVar, "ufsroot0") == 0) {
+-		extern int sweet_ufs_rootdev(dev_t *dev);
++	// 1290: rd=ufsroot1 / ufsroot2 too; boot-arg ufsrootminor=N overrides the minor
++	if (strncmp(rdBootVar, "ufsroot", 7) == 0 && rdBootVar[7] >= '0' && rdBootVar[7] <= '2' && rdBootVar[8] == 0) {
++		extern int sweet_ufs_rootdev(dev_t *dev, int rd_minor);
+ 		OSSafeReleaseNULL(matching);
+-		int ufs_error = sweet_ufs_rootdev(root);
++		int ufs_error = sweet_ufs_rootdev(root, rdBootVar[7] - '0');
+ 		if (ufs_error) {
+ 			panic("IOFindBSDRoot: SWEET UFS root %s unavailable: %d", rdBootVar, ufs_error);
+ 		}
+-		strlcpy(rootName, rdBootVar, rootNameSize);
++		snprintf(rootName, rootNameSize, "ufsroot%d", minor(*root));
+ 		IOLog("BSD root: %s, major %d, minor %d\n", rootName, major(*root), minor(*root));
+ 		*oflags = 0;
+ 		goto iofrootx;
+-- 
+2.56.0
+

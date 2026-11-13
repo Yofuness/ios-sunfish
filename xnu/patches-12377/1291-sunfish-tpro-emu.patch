@@ -1,0 +1,100 @@
+From 4f0b795225467b9e6691b2b2c8aec18ce6f1e66a Mon Sep 17 00:00:00 2001
+From: Yofuness <compiledchickennuggets@gmail.com>
+Date: Fri, 13 Nov 2026 10:36:15 -0500
+Subject: [PATCH] sunfish: EL0 emulator reads S3_3_C4_C0_3 as 0 and skips iOS
+ 27's three TPRO words; sweettproemu=0 turns it off (1291)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ osfmk/arm64/sleh.c | 33 +++++++++++++++++++++++++++++----
+ 1 file changed, 29 insertions(+), 4 deletions(-)
+
+diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
+index cd53189..c120dbf 100644
+--- a/osfmk/arm64/sleh.c
++++ b/osfmk/arm64/sleh.c
+@@ -192,6 +192,7 @@ enum sweet_emu_cat {
+ 	SWEET_EMU_LRCPC2,
+ 	SWEET_EMU_FLAGM_DIT,
+ 	SWEET_EMU_SHA3,
++	SWEET_EMU_TPRO,         /* 1291 */
+ 	SWEET_EMU_CAT_COUNT
+ };
+ 
+@@ -211,6 +212,7 @@ static const char *const sweet_emu_cat_names[SWEET_EMU_CAT_COUNT] = {
+ 	"lrcpc2",
+ 	"flagm_dit",
+ 	"sha3",
++	"tpro",
+ };
+ 
+ static inline void
+@@ -226,7 +228,7 @@ sweet_emu_record(enum sweet_emu_cat cat, uint64_t pc, uint32_t insn)
+ 	} else if (__improbable(((prev_tot + 1ULL) & 0xFFFFFULL) == 0)) {
+ 		printf("SWEET EMU: total=%llu pac_ret=%llu pac_br=%llu sign_auth=%llu "
+ 		    "strip=%llu pacga=%llu ldraa=%llu jscvt=%llu fcma=%llu "
+-		    "lrcpc2=%llu flagm_dit=%llu sha3=%llu\n",
++		    "lrcpc2=%llu flagm_dit=%llu sha3=%llu tpro=%llu\n",
+ 		    (unsigned long long)(prev_tot + 1ULL),
+ 		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_PAC_RET], relaxed),
+ 		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_PAC_BR], relaxed),
+@@ -238,7 +240,8 @@ sweet_emu_record(enum sweet_emu_cat cat, uint64_t pc, uint32_t insn)
+ 		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_FCMA], relaxed),
+ 		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_LRCPC2], relaxed),
+ 		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_FLAGM_DIT], relaxed),
+-		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_SHA3], relaxed));
++		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_SHA3], relaxed),
++		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_TPRO], relaxed));
+ 	}
+ }
+ 
+@@ -248,7 +251,7 @@ sweet_emu_format_stats(char *buf, size_t buflen)
+ 	int n = snprintf(buf, buflen,
+ 	    "total=%llu pac_ret=%llu pac_br=%llu pac_sign_auth=%llu "
+ 	    "pac_strip=%llu pacga=%llu ldraa=%llu jscvt=%llu fcma=%llu "
+-	    "lrcpc2=%llu flagm_dit=%llu sha3=%llu",
++	    "lrcpc2=%llu flagm_dit=%llu sha3=%llu tpro=%llu",
+ 	    (unsigned long long)os_atomic_load(&sweet_emu_total, relaxed),
+ 	    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_PAC_RET], relaxed),
+ 	    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_PAC_BR], relaxed),
+@@ -260,7 +263,8 @@ sweet_emu_format_stats(char *buf, size_t buflen)
+ 	    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_FCMA], relaxed),
+ 	    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_LRCPC2], relaxed),
+ 	    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_FLAGM_DIT], relaxed),
+-	    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_SHA3], relaxed));
++	    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_SHA3], relaxed),
++		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_TPRO], relaxed));
+ 	if (n < 0) {
+ 		return 0;
+ 	}
+@@ -1114,6 +1118,27 @@ sweet_emulate_user_arm64(arm_context_t *context)
+ 		return true;
+ 	}
+ 
++	/*
++	 * 1291: iOS 27's TPRO path (dyld, libobjc, pthread; only taken when commpage byte 0x10c == 4, which this kernel
++	 * leaves 0): mrs xN, S3_3_C4_C0_3 reads 0, the set/clear words 0xd5940000, 0xd5900040, 0xd5900020 are NOPs.
++	 * Boot-arg sweettproemu=0 turns it off (SIGILL as before).
++	 */
++	static int sweet_tpro_emu = -1;
++	if (__improbable(sweet_tpro_emu < 0)) {
++		int on = 1;
++		PE_parse_boot_argn("sweettproemu", &on, sizeof(on));
++		sweet_tpro_emu = on;
++	}
++	if (sweet_tpro_emu &&
++	    ((insn & 0xFFFFFFE0U) == 0xD53B4060U || insn == 0xD5940000U || insn == 0xD5900040U || insn == 0xD5900020U)) {
++		if ((insn & 0xFFFFFFE0U) == 0xD53B4060U) {
++			sweet_emu_write_x(ss, insn & 31U, 0ULL, false);
++		}
++		ss->pc = pc + 4ULL;
++		sweet_emu_record(SWEET_EMU_TPRO, pc, insn);
++		return true;
++	}
++
+ 	return false;
+ }
+ #endif /* defined(SWEET) */
+-- 
+2.56.0
+

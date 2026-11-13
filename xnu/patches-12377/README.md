@@ -20,6 +20,20 @@ in file order. As in `work/src/xnu`: commit in the tree, then save the commit as
 | `0129`-`0141` (12 patches) | IOS-26-Hot's iOS 26 generic layer: arm64e exec + shared region, sleh PAC/ISA emulator, build fixes, diagnostics entitlements, fuse query, firehose config, kmem RNG guard, SMP/QEMU guards, sandbox outputs + exit log, pmem MPSS wcomb, IPC service-port nofilter, IOMFB swap layout | IOS-26-Hot, byte-identical, Hot's numbers |
 | `0199` | Darwin 27 syscall slots (pipe2, dup3, fchflagsat, getumask, aio_readv/writev, ...) | UniXNU `patches/xnu-12377/darwin26-syscalls.patch`, unchanged (header added) |
 | `1NNN` | our `xnu/patches/0NNN-*` re-applied on this stack, number + 1000 (0151 -> 1151); exported from the tree with `git format-patch` (fuzzed ones refreshed) | ours |
+| `1290`+ | new for this series only (no iOS 16 counterpart), numbered after the last re-applied one | ours |
+
+New patches (1290+):
+- `1290` ufs root minor: `rd=ufsroot1` (or `ufsroot2`) roots on that sweet_ufs minor, `ufsrootminor=N` overrides it
+  (default: the rd digit, so `rd=ufsroot0` is unchanged). Minor 2 (`ufsroot2`) is a byte range of userdata from
+  `ufsrootbase=` + `ufsrootcount=` (bytes, 4 KiB aligned, relative to the partition start; off unless ufsrootcount is
+  set), e.g. a contiguous root image file inside iOS 16's /var; read-only unless `ufsrw=1`.
+- `1291` TPRO emulation: the sleh EL0 emulator (0130) reads `mrs xN, S3_3_C4_C0_3` as 0 and steps over iOS 27's three
+  TPRO words 0xd5940000/0xd5900040/0xd5900020 (counted as `tpro` in sysctl sweet.emu_stats); `sweettproemu=0` turns it
+  off. Belt and braces: 27's userland only runs them when commpage byte 0x10c == 4, and this kernel never writes 0x10c.
+- No patch needed for iOS 27's CPU-feature checks: DIT, SB, SHA512, SHA3, JSCVT, FCMA commpage bits and their
+  hw.optional.arm.FEAT_* sysctls come from the ID registers of the boot CPU (an A55) in osfmk/arm/commpage/commpage.c;
+  A55/A76 lack all six (GUESS from the Arm TRM values; check `sysctl hw.optional` on the first 12377 boot); commpage 0x10c is zeroed and unwritten; the user timebase type is USER_TIMEBASE_SPEC (CNTVCT, not
+  CNTVCTSS) since SWEET.h defines neither HAS_ACNTVCT nor __ARM_ARCH_8_6__.
 
 `SWEET.h`'s `BTI_ENFORCED 0` is already in Hot's 0004 (our iOS 16 copy lacks it), so no patch for it.
 
@@ -84,7 +98,8 @@ as in Hot's CI), then ours, which must all apply (a sweet-* patch that fails `gi
 The stage scripts fetch their sources from GitHub and bearssl.org on each full or re-patch run.
 
 Checked 2026-11-13 (no build): the whole series applies from scratch on ac9718f in that order (153 patches: 6 dxb +
-147 ours; the result's tree hash equals `sunfish-12377` HEAD), no new whitespace errors in our patches.
+147 ours; the result's tree hash equals `sunfish-12377` HEAD), no new whitespace errors in our patches. Re-checked with
+1290/1291 (149 ours, in a temporary index from the `stage:` commit c3a78d5 + 089e3fb's header): tree hash equals HEAD.
 
 Differences from Hot's CI kept on purpose: dxb 6639065 instead of bd88697 (it adds `define_esr_ec_pac_fail_unconditionally`
 and `guard_sptm_user_pointer_ops_with_pac`, both apply under the series), Xcode 26.1 instead of runner's Xcode 26.x.
