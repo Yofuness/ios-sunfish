@@ -9,6 +9,8 @@ OFFSET of userdata and leaves the first OFFSET bytes (the iOS 16 root, read by
 rd=ufsroot0) untouched. OFFSET must be a multiple of the block size. Make IN
 with `img2simg -s` so the image's never-written blocks are DONT_CARE too (no
 slow FILL chunks for ABL). Chunks are copied unchanged, streamed.
+Not for HFS roots any more: -s also skips zero pages inside files (stale data on
+the phone, 2026-11-13); tools/root27/simg-hfs.py replaces both steps there.
 """
 import argparse, shutil, struct, sys
 

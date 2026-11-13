@@ -18,6 +18,15 @@ execs mount (pid 2), which dies with SIGBUS. MTE instructions are emulated (1294
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 16:00 simg-hfs.py: the root sparse image now writes every allocated block, zero pages included
+- tools/root27/simg-hfs.py (stdlib) reads the HFS+ header + allocation bitmap of root27-c1.img: allocated = RAW (zero runs
+  >= 16 blocks as FILL 0), free runs = DONT_CARE, both volume headers RAW, 16 GiB DONT_CARE in front. Wired into
+  mkiosroot27.sh finish (`--simg-zero-skip` = old img2simg -s way). OBS on the current image (not rebuilt): 4096-byte blocks,
+  3,407,872 total, 2,853,415 allocated, 554,457 free (= header freeBlocks); 1942 chunks: RAW 1310 / 10,909 MiB, FILL 629 /
+  237 MiB (largest 16 MiB), DONT_CARE 3 / 18,550 MiB; 11,146 MiB to write. `--verify`: 2,853,415/2,853,415 blocks equal the
+  image, 0 problems; cross-check simg2img expand vs image: 0 allocated blocks differ (292 free blocks hold stale image data,
+  never read). New ../restore/root27/root27-c1-at16g.simg 11,438,667,000 bytes (old .simg files deleted). Not yet written.
+
 ### 2026-11-13 15:50 ROOT CAUSE: the sparse write skipped zero pages; stale data in the 27.2.1 root
 - ufsroot1 vs root27-c1.img, sha256 per MiB (phone read-only, kernel167): 2314 of 13312 chunks differ; 1486 are all-zero in
   the image, 828 hold data; every differing page in 3 sampled chunks is all-zero in the image and holds old partition data

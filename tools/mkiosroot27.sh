@@ -2,7 +2,7 @@
 # Build the iOS 27.2.1 (24B156, iPhone12,1) HFSX root image for kernel301+ (stage 4, docs/root27.md).
 #
 #   mkiosroot27.sh [--profile full|c1] [--size SIZE] [--steps extract,image,rewrite,finish] [--jobs N]
-#                  [--force] [--keep-staging] [--keep-panic-on-crash] [--page-shift 12]
+#                  [--force] [--keep-staging] [--keep-panic-on-crash] [--page-shift 12] [--simg-zero-skip]
 #
 # Steps (each one can be run alone; "image" refuses to overwrite an image unless --force):
 #   extract  the OS, SystemOS and AppOS dmgs from the IPSW (ipsw; AEA keys from Apple's server, or the
@@ -12,8 +12,10 @@
 #   rewrite  PAC lowering inside the image: the dyld cache (zeta rewrite-zeta-dyld-cache.py with the proof in
 #            ../restore/ipsw/x/24B156/prove) and every thin arm64e Mach-O (tools/root27/rewrite-zeta-userland-tree.py),
 #            both re-signed ad hoc; written back in place (tools/root27/apply-rewrites.py)
-#   finish   fsck.hfsplus, img2simg -s, and a copy with 16 GiB DONT_CARE in front (userdata offset 16 GiB)
-# Out of git: ../restore/root27/root27-PROFILE.{img,simg}, root27-PROFILE-at16g.simg, reports-PROFILE/,
+#   finish   fsck.hfsplus, then tools/root27/simg-hfs.py -> root27-PROFILE-at16g.simg: every HFS-allocated block
+#            written (zero pages too), free space DONT_CARE, 16 GiB DONT_CARE in front (userdata offset 16 GiB);
+#            --simg-zero-skip = the old img2simg -s + simg-offset.py (skips zero pages inside files: stale data)
+# Out of git: ../restore/root27/root27-PROFILE.img, root27-PROFILE-at16g.simg, reports-PROFILE/,
 # orig-PROFILE/ (the Mach-Os before rewriting). Nothing is written to the phone.
 #
 # Reused: the image/copy/cryptex-link/logd/keybag part is IOS-26-Hot's tools/mkiosroot.sh (MIT, dipa-studio;
@@ -32,7 +34,7 @@ work=$restore/root27
 py=$port/work/venv-pac/bin/python3
 OS_DMG=141-08279-223.dmg SYS_DMG=141-10128-235.dmg APP_DMG=141-08824-252.dmg
 
-profile=full size= steps=extract,image,rewrite,finish jobs=3 force=0 keep_staging=0 panic_off=1 page_shift=
+profile=full size= steps=extract,image,rewrite,finish jobs=3 force=0 keep_staging=0 panic_off=1 page_shift= zero_skip=0
 while [[ $# -gt 0 ]]; do
 	case $1 in
 	--profile) profile=$2; shift ;;
@@ -43,7 +45,8 @@ while [[ $# -gt 0 ]]; do
 	--keep-staging) keep_staging=1 ;;
 	--keep-panic-on-crash) panic_off=0 ;;
 	--page-shift) page_shift=$2; shift ;;
-	*) sed -n '2,21p' "$0"; exit 2 ;;
+	--simg-zero-skip) zero_skip=1 ;;
+	*) sed -n '2,23p' "$0"; exit 2 ;;
 	esac
 	shift
 done
@@ -286,9 +289,18 @@ if has_step finish; then
 	lap fsck
 	need_disk $(( $(du -BG "$img" | cut -f1 | tr -dc 0-9) * 2 ))
 	rm -f "${img%.img}.simg" "${img%.img}-at16g.simg"
-	img2simg -s "$img" "${img%.img}.simg"
-	"$py" -I "$port/tools/root27/simg-offset.py" "${img%.img}.simg" "${img%.img}-at16g.simg" --offset 16G
-	ls -l "$img" "${img%.img}.simg" "${img%.img}-at16g.simg"
+	if [[ $zero_skip == 1 ]]; then
+		# Old way: img2simg -s makes every all-zero block DONT_CARE, also zero pages inside files, and fastboot
+		# leaves the partition's old data there (the 2026-11-13 dyld cache corruption). Only for comparisons.
+		img2simg -s "$img" "${img%.img}.simg"
+		"$py" -I "$port/tools/root27/simg-offset.py" "${img%.img}.simg" "${img%.img}-at16g.simg" --offset 16G
+		rm -f "${img%.img}.simg"
+	else
+		# The HFS allocation bitmap decides: allocated = RAW/FILL (written), free = DONT_CARE; then a full check.
+		python3 -I "$port/tools/root27/simg-hfs.py" "$img" "${img%.img}-at16g.simg" --offset 16G
+		python3 -I "$port/tools/root27/simg-hfs.py" "$img" "${img%.img}-at16g.simg" --offset 16G --verify
+	fi
+	ls -l "$img" "${img%.img}-at16g.simg"
 	du -h "$img"
 	lap sparse
 fi

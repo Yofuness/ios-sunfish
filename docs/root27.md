@@ -6,7 +6,8 @@ git (Apple's files). Nothing here touches the phone.
 
 ## Needs
 - `../restore/ipsw/iPhone12,1_27.2.1_24B156_Restore.ipsw` (sha1 in iphone12,1.sha1), `ipsw` (3.1.739), apfs-fuse,
-  hfsprogs (mkfs.hfsplus, fsck.hfsplus), rsync, img2simg (android-tools), passwordless sudo (loop + FUSE mounts).
+  hfsprogs (mkfs.hfsplus, fsck.hfsplus), rsync, img2simg/simg2img (android-tools; only for
+  `--simg-zero-skip` and cross-checks), passwordless sudo (loop + FUSE mounts).
 - The dyld cache proof: `tools/ios27-pac/prove-cache.py` (README there) -> `../restore/ipsw/x/24B156/prove/summary.json`.
 - `work/venv-pac` (capstone 5.0.7 + numpy) and llvm-mc on PATH.
 
@@ -37,10 +38,20 @@ Steps (log in `../restore/root27/build-PROFILE.log`):
      tools/ios27-pac/sunfish_pac.py's TPRO and noreturn-end fixes, without which 27's dyld is refused; per-image proof,
      lowering, header -> arm64 ALL, ad hoc re-hash, platform id 26, CS_RUNTIME on executables), applied in place; the
      originals go to `../restore/root27/orig-PROFILE/`. Reports: `../restore/root27/reports-PROFILE/{cache,tree}.json`.
-4. **finish**: `fsck.hfsplus -fy` (Linux name decomposition), `fsck.hfsplus -fn`, `img2simg -s` (free space = DONT_CARE),
-   and `tools/root27/simg-offset.py --offset 16G` -> `root27-PROFILE-at16g.simg`.
+4. **finish**: `fsck.hfsplus -fy` (Linux name decomposition), `fsck.hfsplus -fn`, then `tools/root27/simg-hfs.py --offset 16G`
+   -> `root27-PROFILE-at16g.simg` and the same with `--verify`. It reads the HFS+ volume header and allocation bitmap:
+   every allocated block is RAW (zero runs of >= 16 blocks as FILL 0, chunks <= 16 MiB), free runs and everything past the
+   volume are DONT_CARE, both volume headers always RAW, 16 GiB DONT_CARE in front. `--verify` checks every allocated block
+   against the image. `--simg-zero-skip` gives the old `img2simg -s` + `simg-offset.py` output (do not write it).
 
 ## Writing it (destructive, needs the user's OK first; not done by the script)
 `fastboot -S 256M flash userdata ../restore/root27/root27-c1-at16g.simg` writes the image at userdata byte 16 GiB, the start
-of /dev/ufsroot1 (iOS 16's /var region, 1185): the first 16 GiB (iOS 16's root) are DONT_CARE. Back up /var/local first.
+of /dev/ufsroot1 (iOS 16's /var region, 1185): the first 16 GiB (iOS 16's root) are DONT_CARE.
+`-S 256M` makes fastboot split the image into <= 256 MiB sparse pieces (ABL's download buffer); DONT_CARE costs nothing.
+**Zero pages must be written.** A DONT_CARE block is never written, so it keeps whatever the partition held before. With
+`img2simg -s` every all-zero 4 KiB block was DONT_CARE, including zero pages inside files: on 2026-11-13 ufsroot1 differed
+from root27-c1.img in 2314 of 13312 MiB, all at pages that are zero in the image, and the old /var data there corrupted the
+dyld cache (`.25.dylddata` page 0) and a `__TPRO_CONST` word. Only blocks the HFS bitmap marks free may be DONT_CARE (HFS
+never reads them); simg-hfs.py does that. The c1 image: 11,146 MiB written (10,909 RAW + 237 FILL), 2,166 MiB free skipped.
+Back up /var/local first.
 Boot with kernel302+ and `rd=ufsroot1` (1290); iOS 16 then needs `sweetnofstab=1`. See the pipeline note, section 5.
