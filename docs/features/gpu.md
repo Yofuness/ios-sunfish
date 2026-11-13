@@ -23,6 +23,20 @@
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
 
+### 2026-11-12 21:40 U12-1 keep VkDevice after a recovered GPU restart: Turnip 0112 written, Fable review, fixes in progress
+0112 (port of UniXNU c72a8a5): on a rise of the kernel's per-client faults count, keep the device (VK_SUCCESS + log)
+instead of vk_device_set_lost; TU_DARWIN_KEEP_DEVICE=0 = old behaviour. Not built yet. Fable review (3 lenses + skeptic):
+- Blocker for testing: sweetgpukill=1 is the compiled-in default (xnu 0244), so the kernel kills backboardd after every
+  recovery whatever Turnip does: A/B tests need sweetgpukill=0 on the boot line.
+- Major: no cap: a client that hangs the shared ring every frame would stall everyone forever (now: cap 3 per 60 s).
+- Major: dropped work finishes as Completed with no error; one-time uploads stay stale (bridge staging.rs:200-208);
+  nothing reads tu_darwin_restarts yet (follow-up, backlog U12-1b). Can look like B44/B53 garbling.
+- Minor: fault_count race between threads (atomic xchg now); a failed recovery looked "kept" until the next submit
+  (kernel 0282: GetStatus NotReady after a failed recovery); the counter counts status checks, not restarts; the
+  warning went only to the backboardd Mesa log (now also /dev/console like 0108).
+Plan: 0112 v2 + xnu 0282 -> bundle + kernel164; A/B kdA (patch on, 3 boots) vs TU_DARWIN_KEEP_DEVICE=0, all with
+sweetgpukill=0 sweethangtest=3000; pass = recover2 done, no DEVLOST/backboardd kill, PID kept, UI draws after.
+
 ### 2026-11-02 22:39 n8: second full soak, first with 0 hangs of any kind (everyday setup)
 - Soak n8, kernel158 everyday args + `sweetwdtcrumb=1`, bundle 82f6b41, mtl2-env with SWEET_CULL=3, slider at minimum
   (nits 33), 21:31-22:31: 3607 s, 398 526 submits, G1 0, G2 0, G4 0, backboardd restarts 0, max 82.8 C, caps 0,
