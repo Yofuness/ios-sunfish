@@ -41,6 +41,13 @@ New patches (1290+):
   EC 0x1C FPAC), and for pid 1's aborts just before EXC_BAD_ACCESS is delivered. `word` = the instruction at pc
   (0xdeadbeef if unreadable), `sr_off` = pc - shared region base (0 outside it; cache offset = sr_off - slide). First 64
   per boot, pid 1 always; `sweetundeflog=0` turns it off.
+- `1294` no MTE: exec_add_apple_strings clears bit 2 (0x4, MTE "sec") of `security_config=0x..` and logs the first 4
+  execs' value (`sweet-nomte: security_config 0x.. (task 0x..) mask 1`, launchd first); the sleh EL0 emulator makes
+  `msr tco, #imm` / `msr tco, xN` no-ops and `mrs xN, tco` read 0 (`tco` in sweet.emu_stats). iOS 27's libsystem_platform
+  (__os_security_config_init -> __apply_security_config) ORs the apple[] value into ___security_config, and bit 2 (or
+  `has_sec_transition=1`) picks the $VARIANT$MTE strcmp/strncmp, whose `msr tco` SIGILLed launchd (k304a). Static
+  reading says 12377 never sets bit 2 here (reserved without HAS_MTE; launchd = 0x18 + entitled bits), so the log line
+  settles where the bit came from. `sweetnomte` bit 0 = mask, bit 1 = TCO emulation (default 3; 0 turns both off).
 - No patch needed for iOS 27's CPU-feature checks: DIT, SB, SHA512, SHA3, JSCVT, FCMA commpage bits and their
   hw.optional.arm.FEAT_* sysctls come from the ID registers of the boot CPU (an A55) in osfmk/arm/commpage/commpage.c;
   A55/A76 lack all six (GUESS from the Arm TRM values; check `sysctl hw.optional` on the first 12377 boot); commpage 0x10c is zeroed and unwritten; the user timebase type is USER_TIMEBASE_SPEC (CNTVCT, not
@@ -113,6 +120,7 @@ Checked 2026-11-13 (no build): the whole series applies from scratch on ac9718f 
 1290/1291 (149 ours, in a temporary index from the `stage:` commit c3a78d5 + 089e3fb's header): tree hash equals HEAD.
 Re-checked with 1292 (150 ours, same method): tree hash d7c5c63 equals the tree with 1292's edits (uncommitted at check time).
 Re-checked with 1293 (151 ours, same method): tree hash f75d960 equals `sunfish-12377` HEAD be0f2d2, no whitespace errors.
+Re-checked with 1294 (152 ours, 1294 applied to HEAD~1 in a temporary index): tree hash 367d655 equals `sunfish-12377` HEAD db2e009, no whitespace errors.
 
 Differences from Hot's CI kept on purpose: dxb 6639065 instead of bd88697 (it adds `define_esr_ec_pac_fail_unconditionally`
 and `guard_sptm_user_pointer_ops_with_pac`, both apply under the series), Xcode 26.1 instead of runner's Xcode 26.x.

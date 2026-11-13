@@ -1,0 +1,140 @@
+From db2e009eed12e4479440e8176adc8fd7d5190594 Mon Sep 17 00:00:00 2001
+From: Yofuness <compiledchickennuggets@gmail.com>
+Date: Fri, 13 Nov 2026 12:26:19 -0500
+Subject: [PATCH] sunfish: security_config never carries the MTE bit (0x4),
+ first execs' value logged; EL0 emulator makes msr/mrs TCO no-ops;
+ sweetnomte=0 turns both off (1294)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ bsd/kern/kern_exec.c | 25 ++++++++++++++++++++++++-
+ osfmk/arm64/sleh.c   | 33 +++++++++++++++++++++++++++++----
+ 2 files changed, 53 insertions(+), 5 deletions(-)
+
+diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
+index 069c605..9f1842d 100644
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -7334,9 +7334,32 @@ exec_add_apple_strings(struct image_params *imgp,
+ 	{
+ 		#define SECURITY_CONFIG_KEY "security_config="
+ 		char security_config_str[strlen(SECURITY_CONFIG_KEY) + HEX_STR_LEN + 1];
++		uint32_t security_config = task_get_security_config(task);
++
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++		/*
++		 * 1294: bit 2 is MTE ("sec") to iOS 27's libsystem_platform: set, it picks the MTE string variants,
++		 * whose msr tco SIGILLs here (no MTE). Never hand it out; log the first execs' value (launchd first).
++		 * Boot-arg sweetnomte: bit 0 = this mask (default 3), bit 1 = sleh's TCO emulation; 0 turns both off.
++		 */
++		static int sweet_nomte = -1;
++		static uint32_t sweet_nomte_logged = 0;
++		if (__improbable(sweet_nomte < 0)) {
++			int v = 3;
++			PE_parse_boot_argn("sweetnomte", &v, sizeof(v));
++			sweet_nomte = v;
++		}
++		if (sweet_nomte & 1) {
++			security_config &= ~0x4U;
++		}
++		if (sweet_nomte_logged++ < 4U) {
++			printf("sweet-nomte: security_config 0x%x (task 0x%x) mask %d\n", security_config,
++			    task_get_security_config(task), sweet_nomte & 1);
++		}
++#endif /* ARM64_BOARD_CONFIG_SWEET */
+ 
+ 		snprintf(security_config_str, sizeof(security_config_str),
+-		    SECURITY_CONFIG_KEY "0x%x", task_get_security_config(task));
++		    SECURITY_CONFIG_KEY "0x%x", security_config);
+ 
+ 		error = exec_add_user_string(imgp, CAST_USER_ADDR_T(security_config_str), UIO_SYSSPACE, FALSE);
+ 		if (error) {
+diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
+index 2b441bc..31ce7f6 100644
+--- a/osfmk/arm64/sleh.c
++++ b/osfmk/arm64/sleh.c
+@@ -196,6 +196,7 @@ enum sweet_emu_cat {
+ 	SWEET_EMU_FLAGM_DIT,
+ 	SWEET_EMU_SHA3,
+ 	SWEET_EMU_TPRO,         /* 1291 */
++	SWEET_EMU_TCO,          /* 1294 */
+ 	SWEET_EMU_CAT_COUNT
+ };
+ 
+@@ -216,6 +217,7 @@ static const char *const sweet_emu_cat_names[SWEET_EMU_CAT_COUNT] = {
+ 	"flagm_dit",
+ 	"sha3",
+ 	"tpro",
++	"tco",
+ };
+ 
+ static inline void
+@@ -231,7 +233,7 @@ sweet_emu_record(enum sweet_emu_cat cat, uint64_t pc, uint32_t insn)
+ 	} else if (__improbable(((prev_tot + 1ULL) & 0xFFFFFULL) == 0)) {
+ 		printf("SWEET EMU: total=%llu pac_ret=%llu pac_br=%llu sign_auth=%llu "
+ 		    "strip=%llu pacga=%llu ldraa=%llu jscvt=%llu fcma=%llu "
+-		    "lrcpc2=%llu flagm_dit=%llu sha3=%llu tpro=%llu\n",
++		    "lrcpc2=%llu flagm_dit=%llu sha3=%llu tpro=%llu tco=%llu\n",
+ 		    (unsigned long long)(prev_tot + 1ULL),
+ 		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_PAC_RET], relaxed),
+ 		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_PAC_BR], relaxed),
+@@ -244,7 +246,8 @@ sweet_emu_record(enum sweet_emu_cat cat, uint64_t pc, uint32_t insn)
+ 		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_LRCPC2], relaxed),
+ 		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_FLAGM_DIT], relaxed),
+ 		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_SHA3], relaxed),
+-		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_TPRO], relaxed));
++		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_TPRO], relaxed),
++		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_TCO], relaxed));
+ 	}
+ }
+ 
+@@ -254,7 +257,7 @@ sweet_emu_format_stats(char *buf, size_t buflen)
+ 	int n = snprintf(buf, buflen,
+ 	    "total=%llu pac_ret=%llu pac_br=%llu pac_sign_auth=%llu "
+ 	    "pac_strip=%llu pacga=%llu ldraa=%llu jscvt=%llu fcma=%llu "
+-	    "lrcpc2=%llu flagm_dit=%llu sha3=%llu tpro=%llu",
++	    "lrcpc2=%llu flagm_dit=%llu sha3=%llu tpro=%llu tco=%llu",
+ 	    (unsigned long long)os_atomic_load(&sweet_emu_total, relaxed),
+ 	    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_PAC_RET], relaxed),
+ 	    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_PAC_BR], relaxed),
+@@ -267,7 +270,8 @@ sweet_emu_format_stats(char *buf, size_t buflen)
+ 	    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_LRCPC2], relaxed),
+ 	    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_FLAGM_DIT], relaxed),
+ 	    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_SHA3], relaxed),
+-		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_TPRO], relaxed));
++		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_TPRO], relaxed),
++		    (unsigned long long)os_atomic_load(&sweet_emu_counts[SWEET_EMU_TCO], relaxed));
+ 	if (n < 0) {
+ 		return 0;
+ 	}
+@@ -1142,6 +1146,27 @@ sweet_emulate_user_arm64(arm_context_t *context)
+ 		return true;
+ 	}
+ 
++	/*
++	 * 1294: MTE's tag-check override (iOS 27's $VARIANT$MTE string functions): msr tco, #imm and msr tco, xN are
++	 * NOPs, mrs xN, tco reads 0 (no tags, nothing to override). Boot-arg sweetnomte without bit 1 turns it off.
++	 */
++	static int sweet_tco_emu = -1;
++	if (__improbable(sweet_tco_emu < 0)) {
++		int v = 3;
++		PE_parse_boot_argn("sweetnomte", &v, sizeof(v));
++		sweet_tco_emu = (v >> 1) & 1;
++	}
++	if (sweet_tco_emu &&
++	    ((insn & 0xFFFFF0FFU) == 0xD503409FU || (insn & 0xFFFFFFE0U) == 0xD51B42E0U ||
++	    (insn & 0xFFFFFFE0U) == 0xD53B42E0U)) {
++		if ((insn & 0xFFFFFFE0U) == 0xD53B42E0U) {
++			sweet_emu_write_x(ss, insn & 31U, 0ULL, false);
++		}
++		ss->pc = pc + 4ULL;
++		sweet_emu_record(SWEET_EMU_TCO, pc, insn);
++		return true;
++	}
++
+ 	return false;
+ }
+ 
+-- 
+2.56.0
+
