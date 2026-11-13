@@ -1,0 +1,94 @@
+From 2734b6d7eeec219d83bb6604659e7a589e3f019f Mon Sep 17 00:00:00 2001
+From: Yofuness <compiledchickennuggets@gmail.com>
+Date: Thu, 12 Nov 2026 21:46:38 -0500
+Subject: [PATCH] =?UTF-8?q?sunfish:=20file=20server=20reads=20ranges=20?=
+ =?UTF-8?q?=E2=89=A4=2016=20MB=20in=20one=20go=20before=20sending=20(atomi?=
+ =?UTF-8?q?c=20flame-shot,=20B62)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+sf_read() reads a READ range of up to 16 MB into one kalloc_data buffer with a single vn_rdwr
+before replying, then sends it in the usual 64 KB pieces, so a framebuffer shot is taken in one
+pass instead of 64 KB bands read between blocking USB sends (the 15-row tearing in B62). Larger
+ranges, a failed allocation (Z_NOPAGEWAIT) or a snapshot already in flight use the old streaming
+loop. sweetfsnap=0 turns it off.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ bsd/dev/sweet_files.c | 45 +++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 45 insertions(+)
+
+diff --git a/bsd/dev/sweet_files.c b/bsd/dev/sweet_files.c
+index dedded7..9a78874 100644
+--- a/bsd/dev/sweet_files.c
++++ b/bsd/dev/sweet_files.c
+@@ -32,6 +32,8 @@
+ #include <kern/thread.h>
+ #include <kern/sched_prim.h>
+ #include <libkern/libkern.h>
++#include <libkern/OSAtomic.h>
++#include <pexpert/pexpert.h>
+ 
+ extern int sweet_vfs_mkdir(const char *path, int mode);
+ extern int sweet_vfs_symlink(const char *target, const char *link);
+@@ -44,6 +46,25 @@ void sweet_files_start(void);
+ static char *sf_buf;
+ static int sf_chan;
+ 
++/*
++ * 0283: sweetfsnap (default 1; 0 = old behaviour): READ of up to 16 MB is
++ * read into one buffer before anything is sent, so a framebuffer shot is
++ * one moment instead of 64 KB bands read between USB sends (B62).
++ */
++#define SF_SNAP_MAX     (16ULL << 20)
++static volatile UInt32 sf_snap_busy;
++
++static bool
++sf_snap_on(void)
++{
++	static int v = -1;
++	if (v < 0) {
++		v = 1;
++		(void)PE_parse_boot_argn("sweetfsnap", &v, sizeof(v));
++	}
++	return v != 0;
++}
++
+ static void
+ sf_sleep_ms(int ms)
+ {
+@@ -235,6 +256,30 @@ sf_read(socket_t so, const char *path, uint64_t off, uint64_t len)
+ 		sf_reply(so, err, 0, false);
+ 		return err;
+ 	}
++	/* 0283: whole range into one buffer first, then send; busy or no memory -> stream as before */
++	char *snap = NULL;
++	if (len > 0 && len <= SF_SNAP_MAX && sf_snap_on() && OSCompareAndSwap(0, 1, &sf_snap_busy)) {
++		snap = kalloc_data((vm_size_t)len, Z_WAITOK | Z_NOPAGEWAIT);
++		if (snap == NULL) {
++			sf_snap_busy = 0;
++		}
++	}
++	if (snap != NULL) {
++		int sresid = 0;
++		err = vn_rdwr(UIO_READ, vp, snap, (int)len, (off_t)off, UIO_SYSSPACE, IO_UNIT,
++		    vfs_context_ucred(ctx), &sresid, vfs_context_proc(ctx));
++		vnode_close(vp, FREAD, ctx);
++		err = err ? err : (sresid ? EIO : 0);
++		sf_reply(so, err, len, true);
++		for (uint64_t done = 0; !err && done < len;) {
++			size_t n = (size_t)MIN((uint64_t)SF_BUF, len - done);
++			err = sf_send(so, snap + done, n);
++			done += n;
++		}
++		kfree_data(snap, (vm_size_t)len);
++		sf_snap_busy = 0;
++		return err;
++	}
+ 	/* Read the first chunk before replying, so a bad offset gives ERR. */
+ 	int chunk = (int)MIN((uint64_t)SF_BUF, len), resid = 0;
+ 	err = vn_rdwr(UIO_READ, vp, sf_buf, chunk, (off_t)off, UIO_SYSSPACE, IO_UNIT,
+-- 
+2.56.0
+
