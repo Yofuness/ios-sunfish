@@ -1,0 +1,59 @@
+From 3afeac239ddc1d06377027de04d85a003880f5f5 Mon Sep 17 00:00:00 2001
+From: Yofuness <compiledchickennuggets@gmail.com>
+Date: Fri, 13 Nov 2026 11:59:27 -0500
+Subject: [PATCH] sunfish: 8 GiB arm64 shared region for iOS 27's dyld cache
+ (Apple 24B156's size); sweetsr27=0 goes back to 6 GiB (1292)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ osfmk/mach/shared_region.h  | 7 ++++++-
+ osfmk/vm/vm_shared_region.c | 8 ++++++++
+ 2 files changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/osfmk/mach/shared_region.h b/osfmk/mach/shared_region.h
+index f7c55b3..7c93a36 100644
+--- a/osfmk/mach/shared_region.h
++++ b/osfmk/mach/shared_region.h
+@@ -88,7 +88,12 @@
+ /* ARM64_TODO: move to higher memory */
+ #endif
+ #define SHARED_REGION_BASE_ARM64                0x180000000ULL
+-#define SHARED_REGION_SIZE_ARM64                0x180000000ULL
++/*
++ * 1292: iOS 27's arm64e cache (24B156: 0x187948000 bytes + 0x20000000 max slide, ends 0x327948000) does not fit in
++ * 12377's 6 GiB. Apple's 24B156 kernel uses base 0x180000000, size 0x200000000 (layout 0 of its table); so do we.
++ * Boot-arg sweetsr27=0 gives processes the old 6 GiB region again (vm_shared_region_create).
++ */
++#define SHARED_REGION_SIZE_ARM64                0x200000000ULL
+ #define SHARED_REGION_NESTING_BASE_ARM64        SHARED_REGION_BASE_ARM64
+ #define SHARED_REGION_NESTING_SIZE_ARM64        SHARED_REGION_SIZE_ARM64
+ #define SHARED_REGION_NESTING_MIN_ARM64         ?
+diff --git a/osfmk/vm/vm_shared_region.c b/osfmk/vm/vm_shared_region.c
+index b665afe..079b19e 100644
+--- a/osfmk/vm/vm_shared_region.c
++++ b/osfmk/vm/vm_shared_region.c
+@@ -110,6 +110,10 @@ TUNABLE_WRITEABLE(int, shared_region_destroy_delay, "vm_shared_region_destroy_de
+ #endif /* DEVELOPMENT || DEBUG */
+ TUNABLE_WRITEABLE(int, panic_on_dyld_issue, "panic_on_dyld_issue", PANIC_ON_DYLD_ISSUE_DEFAULT);
+ 
++/* 1292: 8 GiB arm64 shared region for iOS 27's cache; sweetsr27=0 goes back to 12377's 6 GiB */
++TUNABLE(int, sweet_sr27, "sweetsr27", 1);
++#define SWEET_SR_SIZE_ARM64_OLD 0x180000000ULL
++
+ /*
+  * Cached pointer to the most recently mapped shared region from PID 1, which should
+  * be the most commonly mapped shared region in the system.  There are many processes
+@@ -713,6 +717,10 @@ vm_shared_region_create(
+ 			size = SHARED_REGION_SIZE_ARM64;
+ 			pmap_nesting_start = SHARED_REGION_NESTING_BASE_ARM64;
+ 			pmap_nesting_size = SHARED_REGION_NESTING_SIZE_ARM64;
++			if (!sweet_sr27) {      /* 1292 */
++				size = SWEET_SR_SIZE_ARM64_OLD;
++				pmap_nesting_size = SWEET_SR_SIZE_ARM64_OLD;
++			}
+ 			break;
+ #else
+ 		case CPU_TYPE_I386:
+-- 
+2.56.0
+
