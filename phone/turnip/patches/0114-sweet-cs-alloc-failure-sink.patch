@@ -1,0 +1,402 @@
+diff --git a/src/freedreno/vulkan/tu_cmd_buffer.cc b/src/freedreno/vulkan/tu_cmd_buffer.cc
+index 541b9f8..a47a7df 100644
+--- a/src/freedreno/vulkan/tu_cmd_buffer.cc
++++ b/src/freedreno/vulkan/tu_cmd_buffer.cc
+@@ -4386,6 +4386,9 @@ tu_BeginCommandBuffer(VkCommandBuffer commandBuffer,
+       switch (cmd_buffer->queue_family_index) {
+       case TU_QUEUE_GENERAL:
+          TU_CALLX(cmd_buffer->device, tu_init_hw)(cmd_buffer, &cmd_buffer->cs);
++         result = tu_cs_get_status(&cmd_buffer->cs); /* 0114 */
++         if (result != VK_SUCCESS)
++            return vk_command_buffer_set_error(&cmd_buffer->vk, result);
+          break;
+       default:
+          break;
+@@ -5350,6 +5353,16 @@ tu_EndCommandBuffer(VkCommandBuffer commandBuffer)
+    tu_cs_end(&cmd_buffer->draw_cs);
+    tu_cs_end(&cmd_buffer->draw_epilogue_cs);
+ 
++   /* 0114: a refused CS BO is reported here (its emits went to the sink) */
++   for (struct tu_cs *cs : { &cmd_buffer->cs, &cmd_buffer->draw_cs, &cmd_buffer->draw_epilogue_cs,
++                             &cmd_buffer->tile_store_cs, &cmd_buffer->sub_cs }) {
++      VkResult result = tu_cs_get_status(cs);
++      if (result != VK_SUCCESS) {
++         vk_command_buffer_set_error(&cmd_buffer->vk, result);
++         break;
++      }
++   }
++
+    return vk_command_buffer_end(&cmd_buffer->vk);
+ }
+ TU_GENX(tu_EndCommandBuffer);
+@@ -6294,6 +6307,10 @@ tu_CmdExecuteCommands(VkCommandBuffer commandBuffer,
+    for (uint32_t i = 0; i < commandBufferCount; i++) {
+       VK_FROM_HANDLE(tu_cmd_buffer, secondary, pCmdBuffers[i]);
+ 
++      /* 0114: a secondary whose recording failed makes the primary fail too */
++      if (unlikely(secondary->vk.record_result != VK_SUCCESS))
++         vk_command_buffer_set_error(&cmd->vk, secondary->vk.record_result);
++
+       if (secondary->usage_flags &
+           VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT) {
+          assert(tu_cs_is_empty(&secondary->cs));
+diff --git a/src/freedreno/vulkan/tu_cs.cc b/src/freedreno/vulkan/tu_cs.cc
+index 2331c2f..9b2cc16 100644
+--- a/src/freedreno/vulkan/tu_cs.cc
++++ b/src/freedreno/vulkan/tu_cs.cc
+@@ -9,6 +9,18 @@
+ #include "tu_rmv.h"
+ #include "tu_suballoc.h"
+ 
++/* 0114: write sink for a cs whose BO allocation failed (tu_cs.h) */
++uint32_t tu_cs_fail_sink[TU_CS_FAIL_SINK_SIZE];
++
++bool
++tu_sweet_cs_fail_sink_on(void)
++{
++   static int on = -1;
++   if (on < 0)
++      on = debug_get_num_option("SWEET_CS_FAIL_SINK", 1) != 0;
++   return on;
++}
++
+ /* There is a limit to IB size supported by HW,
+  * which appears to be 0x0fffff.
+  */
+@@ -129,6 +141,9 @@ tu_cs_get_offset(const struct tu_cs *cs)
+ uint64_t
+ tu_cs_get_cur_iova(const struct tu_cs *cs)
+ {
++   if (unlikely(cs->status != VK_SUCCESS))
++      return 0;
++
+    if (cs->mode == TU_CS_MODE_EXTERNAL)
+       return cs->external_iova + ((char *) cs->cur - (char *) cs->start);
+    return tu_cs_current_bo(cs)->iova + ((char *) cs->cur - (char *) tu_cs_current_bo(cs)->map);
+@@ -257,6 +272,10 @@ tu_cs_add_entries(struct tu_cs *cs, struct tu_cs *target)
+    assert(cs->mode == TU_CS_MODE_GROW);
+    assert(target->mode == TU_CS_MODE_GROW);
+ 
++   /* 0114: [start, cur) of a failed cs spans the sink: no entry from it */
++   if (unlikely(cs->status != VK_SUCCESS))
++      return cs->status;
++
+    if (!tu_cs_is_empty(cs))
+       tu_cs_add_entry(cs);
+ 
+@@ -278,7 +297,7 @@ void
+ tu_cs_begin(struct tu_cs *cs)
+ {
+    assert(cs->mode != TU_CS_MODE_SUB_STREAM);
+-   assert(tu_cs_is_empty(cs));
++   assert(tu_cs_is_empty(cs) || cs->status != VK_SUCCESS);
+ }
+ 
+ /**
+@@ -290,6 +309,10 @@ tu_cs_end(struct tu_cs *cs)
+ {
+    assert(cs->mode != TU_CS_MODE_SUB_STREAM);
+ 
++   /* 0114: nothing written to the sink becomes an entry */
++   if (unlikely(cs->status != VK_SUCCESS))
++      return;
++
+    if (cs->mode == TU_CS_MODE_GROW && !tu_cs_is_empty(cs))
+       tu_cs_add_entry(cs);
+ }
+@@ -299,6 +322,9 @@ tu_cs_set_writeable(struct tu_cs *cs, bool writeable)
+ {
+    assert(cs->mode == TU_CS_MODE_GROW || cs->mode == TU_CS_MODE_SUB_STREAM);
+ 
++   if (unlikely(cs->status != VK_SUCCESS))
++      return;
++
+    if (cs->writeable != writeable) {
+       assert(!cs->cond_stack_depth);
+       if (cs->mode == TU_CS_MODE_GROW && !tu_cs_is_empty(cs))
+@@ -345,16 +371,19 @@ tu_cs_begin_sub_stream_aligned(struct tu_cs *cs, uint32_t count,
+       result = tu_cs_reserve_space(cs, count * size + (size - tu_cs_get_offset(cs)) % size);
+       cs->start += (size - tu_cs_get_offset(cs)) % size;
+    }
+-   if (result != VK_SUCCESS)
++   if (result != VK_SUCCESS) {
++      /* 0114: freshly declared, nothing owned yet so safe to zero. */
++      memset(sub_cs, 0, sizeof(*sub_cs));
++      tu_cs_fail(sub_cs, result);
+       return result;
++   }
+ 
+    cs->cur = cs->start;
+ 
+    tu_cs_init_external(sub_cs, cs->device, cs->cur, cs->reserved_end,
+                        tu_cs_get_cur_iova(cs), cs->writeable);
+    tu_cs_begin(sub_cs);
+-   result = tu_cs_reserve_space(sub_cs, count * size);
+-   assert(result == VK_SUCCESS);
++   tu_cs_reserve_space(sub_cs, count * size);
+ 
+    return VK_SUCCESS;
+ }
+@@ -412,6 +441,13 @@ struct tu_cs_entry
+ tu_cs_end_sub_stream(struct tu_cs *cs, struct tu_cs *sub_cs)
+ {
+    assert(cs->mode == TU_CS_MODE_SUB_STREAM);
++
++   /* 0114: most callers of tu_cs_begin_sub_stream() don't check its VkResult
++    * and call us unconditionally afterwards: return an empty entry (bo NULL).
++    */
++   if (unlikely(cs->status != VK_SUCCESS || sub_cs->status != VK_SUCCESS))
++      return (struct tu_cs_entry) {};
++
+    assert(sub_cs->start == cs->cur && sub_cs->end == cs->reserved_end);
+    tu_cs_sanity_check(sub_cs);
+ 
+@@ -437,9 +473,13 @@ tu_cs_end_sub_stream(struct tu_cs *cs, struct tu_cs *sub_cs)
+ VkResult
+ tu_cs_reserve_space(struct tu_cs *cs, uint32_t reserved_size)
+ {
++   if (unlikely(cs->status != VK_SUCCESS))
++      return cs->status;
++
+    if (tu_cs_get_space(cs) < reserved_size) {
+       if (cs->mode == TU_CS_MODE_EXTERNAL) {
+          UNREACHABLE("cannot grow external buffer");
++         tu_cs_fail(cs, VK_ERROR_OUT_OF_HOST_MEMORY);
+          return VK_ERROR_OUT_OF_HOST_MEMORY;
+       }
+ 
+@@ -462,8 +502,16 @@ tu_cs_reserve_space(struct tu_cs *cs, uint32_t reserved_size)
+       /* switch to a new BO */
+       uint32_t new_size = MAX2(cs->next_bo_size, reserved_size);
+       VkResult result = tu_cs_add_bo(cs, new_size);
+-      if (result != VK_SUCCESS)
++      if (result != VK_SUCCESS) {
++         /* 0114: emit into the sink from here on, the command buffer reports the error at End */
++         mesa_loge("sweet 0114: cs %s: %u-dword BO refused (%d), recording to the sink",
++                   cs->name ? cs->name : "?", new_size, result);
++         /* vkEndCommandBuffer may only return the two OOM codes (a map failure is MEMORY_MAP_FAILED) */
++         if (result != VK_ERROR_OUT_OF_HOST_MEMORY)
++            result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
++         tu_cs_fail(cs, result);
+          return result;
++      }
+ 
+       if (cs->cond_stack_depth) {
+          cs->reserved_end = cs->cur + reserved_size;
+@@ -491,7 +539,10 @@ tu_cs_reserve_space(struct tu_cs *cs, uint32_t reserved_size)
+ 
+    if (cs->mode == TU_CS_MODE_GROW) {
+       /* reserve an entry for the next call to this function or tu_cs_end */
+-      return tu_cs_reserve_entry(cs);
++      VkResult result = tu_cs_reserve_entry(cs);
++      if (result != VK_SUCCESS)
++         tu_cs_fail(cs, result);
++      return result;
+    }
+ 
+    return VK_SUCCESS;
+@@ -506,6 +557,12 @@ uint64_t tu_sweet_cs_trims;
+ void
+ tu_cs_reset(struct tu_cs *cs)
+ {
++   /* 0114: a failed cs may have been left writeable (set_writeable returns
++    * early) with cur in the sink: clear both, the pointers are reset below.
++    */
++   bool failed = cs->status != VK_SUCCESS;
++   cs->status = VK_SUCCESS;
++
+    if (cs->mode == TU_CS_MODE_EXTERNAL) {
+       assert(!cs->read_only.bo_count && !cs->read_write.bo_count &&
+              !cs->refcount_bo && !cs->entry_count);
+@@ -513,6 +570,9 @@ tu_cs_reset(struct tu_cs *cs)
+       return;
+    }
+ 
++   if (failed)
++      cs->writeable = false;
++
+    for (uint32_t i = 0; i + 1 < cs->read_only.bo_count; ++i) {
+       TU_RMV(resource_destroy, cs->device, cs->read_only.bos[i]);
+       tu_bo_finish(cs->device, cs->read_only.bos[i]);
+@@ -550,7 +610,7 @@ tu_cs_reset(struct tu_cs *cs)
+    }
+    if (trimmed && cs->sweet_initial_bo_size)
+       cs->next_bo_size = cs->sweet_initial_bo_size;
+-   if (trimmed && !cs->read_only.bo_count && !cs->refcount_bo)
++   if ((trimmed || failed) && !cs->read_only.bo_count && !cs->refcount_bo)
+       cs->start = cs->cur = cs->reserved_end = cs->end = NULL;
+ 
+    if (cs->read_only.bo_count) {
+@@ -576,6 +636,9 @@ tu_cs_emit_data_nop(struct tu_cs *cs,
+                     uint32_t size,
+                     uint32_t align_dwords)
+ {
++   if (unlikely(cs->status != VK_SUCCESS))
++      return 0;
++
+    uint32_t total_size = size + (align_dwords - 1);
+    tu_cs_emit_pkt7(cs, CP_NOP, total_size);
+ 
+diff --git a/src/freedreno/vulkan/tu_cs.h b/src/freedreno/vulkan/tu_cs.h
+index e93dea4..f7d0be3 100644
+--- a/src/freedreno/vulkan/tu_cs.h
++++ b/src/freedreno/vulkan/tu_cs.h
+@@ -96,6 +96,7 @@ struct tu_cs
+    bool writeable;
+    uint32_t next_bo_size;
+    uint32_t sweet_initial_bo_size; /* 0107: next_bo_size restored by a trim */
++   VkResult status; /* 0114: first CS allocation failure, emits go to tu_cs_fail_sink */
+ 
+    struct tu_cs_entry *entries;
+    uint32_t entry_count;
+@@ -181,6 +182,8 @@ static inline struct tu_draw_state
+ tu_cs_end_draw_state(struct tu_cs *cs, struct tu_cs *sub_cs)
+ {
+    struct tu_cs_entry entry = tu_cs_end_sub_stream(cs, sub_cs);
++   if (!entry.bo)
++      return (struct tu_draw_state) {};
+    return (struct tu_draw_state) {
+       .iova = entry.bo->iova + entry.offset,
+       .size = entry.size / sizeof(uint32_t),
+@@ -191,6 +194,28 @@ tu_cs_end_draw_state(struct tu_cs *cs, struct tu_cs *sub_cs)
+ VkResult
+ tu_cs_reserve_space(struct tu_cs *cs, uint32_t reserved_size);
+ 
++/* SweetMetal2 0114 (port of upstream 584a0997c8e "tu: Propagate allocation failures for tu_cs_* functions"): a
++ * refused CS BO used to leave cs->cur NULL (or past the old BO's end) and the next emit crashed (WebKit.GPU SIGSEGV
++ * far 0x0, gpu-bugs.md 2026-11-13 03:40). Now the cs keeps the error in cs->status, emits land harmlessly in this
++ * sink (sized to the PM4 maximum: 14-bit count + header), and the command buffer reports the error at End.
++ * SWEET_CS_FAIL_SINK=0: old behaviour (failure ignored).
++ */
++#define TU_CS_FAIL_SINK_SIZE 16384
++extern uint32_t tu_cs_fail_sink[TU_CS_FAIL_SINK_SIZE];
++
++bool
++tu_sweet_cs_fail_sink_on(void);
++
++static inline void
++tu_cs_fail(struct tu_cs *cs, VkResult result)
++{
++   if (!tu_sweet_cs_fail_sink_on())
++      return;
++   cs->status = result;
++   cs->cur = tu_cs_fail_sink;
++   cs->reserved_end = tu_cs_fail_sink + ARRAY_SIZE(tu_cs_fail_sink);
++}
++
+ uint64_t
+ tu_cs_get_cur_iova(const struct tu_cs *cs);
+ 
+@@ -199,8 +224,13 @@ tu_cs_draw_state(struct tu_cs *sub_cs, struct tu_cs *cs, uint32_t size)
+ {
+    struct tu_cs_memory memory;
+ 
+-   /* TODO: clean this up */
+-   tu_cs_alloc(sub_cs, size, 1, &memory);
++   VkResult result = tu_cs_alloc(sub_cs, size, 1, &memory);
++   if (result != VK_SUCCESS) {
++      /* 0114: freshly declared, nothing owned yet so safe to zero. */
++      memset(cs, 0, sizeof(*cs));
++      tu_cs_fail(cs, result);
++      return (struct tu_draw_state) {};
++   }
+    tu_cs_init_external(cs, sub_cs->device, memory.map, memory.map + size,
+                        memory.iova, memory.writeable);
+    tu_cs_begin(cs);
+@@ -315,6 +345,12 @@ tu_cs_get_space(const struct tu_cs *cs)
+ static inline void
+ tu_cs_reserve(struct tu_cs *cs, uint32_t reserved_size)
+ {
++   /* 0114: after a failure, every reserve restarts at the sink's start */
++   if (unlikely(cs->status != VK_SUCCESS)) {
++      tu_cs_fail(cs, cs->status);
++      return;
++   }
++
+    if (cs->mode != TU_CS_MODE_GROW) {
+       assert(tu_cs_get_space(cs) >= reserved_size);
+       assert(cs->reserved_end == cs->end);
+@@ -327,9 +363,13 @@ tu_cs_reserve(struct tu_cs *cs, uint32_t reserved_size)
+       return;
+    }
+ 
+-   ASSERTED VkResult result = tu_cs_reserve_space(cs, reserved_size);
+-   /* TODO: set this error in tu_cs and use it */
+-   assert(result == VK_SUCCESS);
++   tu_cs_reserve_space(cs, reserved_size); /* 0114: a failure is kept in cs->status */
++}
++
++static inline VkResult
++tu_cs_get_status(const struct tu_cs *cs)
++{
++   return cs->status;
+ }
+ 
+ /**
+diff --git a/src/freedreno/vulkan/tu_device.cc b/src/freedreno/vulkan/tu_device.cc
+index f604d51..b009892 100644
+--- a/src/freedreno/vulkan/tu_device.cc
++++ b/src/freedreno/vulkan/tu_device.cc
+@@ -2666,7 +2666,9 @@ static VkResult
+ tu_init_cmdbuf_start_a725_quirk(struct tu_device *device)
+ {
+    struct tu_cs shader_cs;
+-   tu_cs_begin_sub_stream(&device->sub_cs, 10, &shader_cs);
++   VkResult result = tu_cs_begin_sub_stream(&device->sub_cs, 10, &shader_cs); /* 0114 */
++   if (result != VK_SUCCESS)
++      return result;
+ 
+    uint32_t raw_shader[] = {
+       0x00040000, 0x40600000, // mul.f hr0.x, hr0.x, hr1.x
+@@ -2678,10 +2680,14 @@ tu_init_cmdbuf_start_a725_quirk(struct tu_device *device)
+ 
+    tu_cs_emit_array(&shader_cs, raw_shader, ARRAY_SIZE(raw_shader));
+    struct tu_cs_entry shader_entry = tu_cs_end_sub_stream(&device->sub_cs, &shader_cs);
++   if (!shader_entry.bo)
++      return tu_cs_get_status(&device->sub_cs);
+    uint64_t shader_iova = shader_entry.bo->iova + shader_entry.offset;
+ 
+    struct tu_cs sub_cs;
+-   tu_cs_begin_sub_stream(&device->sub_cs, 47, &sub_cs);
++   result = tu_cs_begin_sub_stream(&device->sub_cs, 47, &sub_cs);
++   if (result != VK_SUCCESS)
++      return result;
+ 
+    tu_cs_emit_regs(&sub_cs, SP_UPDATE_CNTL(A7XX,
+             .vs_state = true, .hs_state = true, .ds_state = true,
+diff --git a/src/freedreno/vulkan/tu_queue.cc b/src/freedreno/vulkan/tu_queue.cc
+index 52f8dc5..4861fd1 100644
+--- a/src/freedreno/vulkan/tu_queue.cc
++++ b/src/freedreno/vulkan/tu_queue.cc
+@@ -478,6 +478,17 @@ queue_submit(struct vk_queue *_queue, struct vk_queue_submit *vk_submit)
+       struct tu_cmd_buffer *cmd_buffer = cmd_buffers[i];
+       struct tu_cs *cs = &cmd_buffer->cs;
+ 
++      /* 0114: a command buffer whose recording failed (vkEndCommandBuffer
++       * returned an OOM error) is invalid; submitting its partial stream
++       * could fault the GPU, so only its waits and signals take effect.
++       */
++      if (unlikely(cmd_buffer->vk.record_result != VK_SUCCESS) &&
++          tu_sweet_cs_fail_sink_on()) {
++         mesa_loge("sweet 0114: skipping a failed command buffer (%d)",
++                   cmd_buffer->vk.record_result);
++         continue;
++      }
++
+       if (perf_pass_index != ~0) {
+          struct tu_cs_entry *perf_cs_entry =
+             &cmd_buffer->device->perfcntrs_pass_cs_entries[perf_pass_index];
+diff --git a/src/freedreno/vulkan/tu_shader.cc b/src/freedreno/vulkan/tu_shader.cc
+index 4e44f3e..1a465f5 100644
+--- a/src/freedreno/vulkan/tu_shader.cc
++++ b/src/freedreno/vulkan/tu_shader.cc
+@@ -2917,7 +2917,8 @@ tu_upload_variant(struct tu_cs *cs,
+     * and total size is always aligned correctly
+     * note: an assert in tu6_emit_xs_config validates the alignment
+     */
+-   tu_cs_alloc(cs, variant->info.size / 4, 1, &memory);
++   if (tu_cs_alloc(cs, variant->info.size / 4, 1, &memory) != VK_SUCCESS)
++      return 0; /* 0114 */
+ 
+    memcpy(memory.map, variant->bin, variant->info.size);
+    return memory.iova;
