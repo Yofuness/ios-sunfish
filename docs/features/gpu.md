@@ -23,6 +23,17 @@
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
 
+### 2026-11-13 00:15 Bridge 0133 (U12-1b) A/B: dropped command buffers end in Error, no regressions (kdD1, kdD2 vs kdE1)
+kernel167, bundle ceb6140 (Turnip 0112 + frontend 0132 + bridge 0133), everyday args + sweetgpukill=0 sweethangtest=3000,
+uisoak 300 s each.
+| boot | 0133 | recover2 | work lost / device kept | GPU restart line | DEVLOST | bbd PID | uisoak |
+| kdD1 | on | 34572 us | backboardd / backboardd | redid 0 staging copies, 4 command buffers marked error | 0 | 61->61 | 27315 submits, G4 1, 0 restarts, 76.7 C |
+| kdD2 | on | 37094 us | backboardd / backboardd | redid 0, 4 marked error | 0 | 61->61 | 27040, G4 1, 0 restarts, 79.0 C |
+| kdE1 | SWEET_RESTART_REDO=0 | 34330 us | WebKit.GPU + backboardd / same | none (off) | 0 | 61->61 | 26982, G4 1, 0 restarts, 79.0 C |
+"redo skipped" 0, MTLCommandBufferStatus/CA error lines 0, "refused" lines per boot 592/625/615 vs 601 on kdC1 (no
+regression). Maps' map area black at every soak end with 0133 on and off (B50, not this bundle). Kept on by default
+(SWEET_RESTART_REDO=0 off). Open: no staging copy was in flight in these hangs, so the redo itself is still untested.
+
 ### 2026-11-12 23:55 kernel167 (xnu 0285 lost span) first boot kdC1: hang recovered, backboardd kept
 kernel167 (= 162 + xnu 0281-0285), bundle 3f069d6, everyday args + sweetgpukill=0 sweethangtest=3000, uisoak 300 s:
 injecting at 104.3 s, recover2 done after 36566 us, 0285 "v2 backboardd: status work lost in a GPU reset (#1)"

@@ -36,7 +36,7 @@ Only items Claude can move now. User tasks are listed below and never gate work;
 5. **GPU stability**: G1 (no recovery) and G4 (backboardd restart); nightly soak; fix whichever rises (gpu.md).
 6. **Garbled and undrawn images** (B44, B53): Notes attachments, Safari tab thumbnails, Music icon, Maps glitch.
 7. **Upstream takeaways** (2026-11-12, best first; backlog U12-*): done 2026-11-12: keep VkDevice (0112, A/B 2/2),
-   isb (0281), [device limits] filled (0132, 38/39 fields; check Photos/B44 next); left: U12-1b bridge side of 0112, YCbCr sampled in place (video CPU, 6-10 h),
+   isb (0281), [device limits] filled (0132, 38/39 fields; check Photos/B44 next); U12-1b bridge 0133 (A/B 2/2, kept on); YCbCr sampled in place (video CPU, 6-10 h),
    cheap checks: submit cuts, FS constlen, cold cache, MSAA A/B. Older items: "Upstream" below.
 
 After these: small Metal test apps built here (textured cube with depth, compute), then Crossy Road (Unity), Instagram,
@@ -48,10 +48,10 @@ Listed with exact log lines and rates in [gpu-bugs.md](gpu-bugs.md) (not auto-lo
 stops phone work, or doubles in rate after a change (then turn that change off first).
 
 ## Phone
-Claude's since 2026-11-12 21:03 (the user). Booted t166z: kernel166 (= kernel162 + xnu 0281 isb, 0282 GetStatus NotReady after a
-failed recovery, 0283 atomic flame-shot, 0284 G2 submit logging), bundle 3f069d6 (+ Turnip 0112 keep VkDevice, frontend 0132
-device limits), venusd/vtvenus 6a24d64 (stall detectors, VT QoS), wland 206585d
-(HT20, Interactive, bounds checks), camd + hapticd Interactive, cam41. Everyday boot: `tools/sunfish-test.sh -k 166 TAG sweetse9=2 sweetcampmic=2 sweetswapbig=6
+Claude's since 2026-11-12 21:03 (the user). Booted t167y: kernel167 (= kernel162 + xnu 0281 isb, 0282 GetStatus NotReady after a
+failed recovery, 0283 atomic flame-shot, 0284 G2 submit logging, 0285 lost span), bundle ceb6140 (+ Turnip 0112 keep VkDevice,
+frontend 0132 device limits, bridge 0133 restart redo), venusd/vtvenus 6a24d64 (stall detectors, VT QoS), wland 206585d
+(HT20, Interactive, bounds checks), camd + hapticd Interactive, cam41. Everyday boot: `tools/sunfish-test.sh -k 167 TAG sweetse9=2 sweetcampmic=2 sweetswapbig=6
 sweetampreset=1 sweetpmemwc=2 sweetgpucap=512 sweetgpukill=0` (sweetgpukill=0 since 2026-11-12: backboardd survives recovered hangs with 0112; t166z was booted without it). /var/local/mtl2-env = SWEET_U0011..14=1,
 SWEET_SURF_FLUSH=1, SWEET_CULL=3 (TU_FETCH_GMEM_MIN_DRAWS=20 removed: G8) (tools/sunfish-install-speed.sh); backboardd env CA_DISABLE_LUMA_BOOST=1 CA_FORCE_TIMER=1.
 
