@@ -1,0 +1,690 @@
+Bridge 0137 (B65): converted YCbCr textures hold half the memory. With SWEET_YCBCR_GPU=1 backboardd kept, per IOSurface texture
+CoreAnimation holds, an R16G16B16A16_SFLOAT image (16.6 MB at 1080p) plus a plane-sized staging buffer (3.1 MB) for the texture's life;
+4 playing tabs took backboardd to 675-740 MB (vs ~430 on the CPU path) and exhausted the 940 MB pool.
+1. Lazy staging: YCbCrConversion builds the fast conversion (0131) first; where it takes the texture, the staging buffer, its set and
+   copies (now `Staged`) are made only at the first conversion the fast kernel does not take: its surface's buffer rebound to other pages
+   (a no-copy HostPages buffer, ShadowBuffer::Rebound, rebind.rs). `ShadowCopies::prepare`, called first thing in Encoder::plan_shadows
+   (the hook upstream metal2vulkan 7ef17497 uses for its own lazy `YCbCrConversion::make`), makes it, so a fallback conversion's uses and
+   record see it; until then uses() names no staging buffer. Textures without a fast form (10-bit, 4:2:2/4:4:4, over plane 1) make it
+   with the texture, as before. Off: SWEET_YCBCR_LAZY=0.
+2. RGBA8 output: an 8-bit 4:2:0 layout read converted (YCBCR8_420_2P over 420v/420f; YCbCrCodes::rgba8) is held as R8G8B8A8_UNORM:
+   the format repr (metal::format ycbcr_repr, so the image plan, plan.format check and every view agree), the runtime's image_formats,
+   both conversion kernels' storage view (Rgba8: ycbcr_convert_module_stored, keyed by a new bool in OwnedModule::YCbCrConvert; the fast
+   kernel's per shape) and the binder: such a slot always takes the device's linear filter (0134's arm), since c/255 texels are off the
+   1/2048 grid the exact routine sums on. Precision is the CPU path's RGBA8 (a read off Metal's by at most 1/510). 10-bit, sRGB twins
+   and extended-range formats keep their images. Default on; SWEET_YCBCR_RGBA8=0 restores Rgba16f (and 0134's switch for 8-bit).
+Saving per texture: 1080p 8.3 MB image + 3.1 MB staging (19.7 -> 8.3 MB), 720p 3.7 + 1.4 MB (8.8 -> 3.7 MB).
+Not covered: heap (argument buffer) textures keep the exact filter routine (0134), now summing c/255 texels (error under 1/2048).
+Reuse: lazy staging follows upstream metal2vulkan 7ef17497 (YCbCrConversion::make / ShadowCopies::prepare at plan_shadows; not
+ported whole: its refresh and in-place reads are a different design); no RGBA8 output upstream or in AdrenoMetal (both keep Rgba16f).
+Logs "SWEET_YCBCR out rgba8|rgba16f, staging lazy|eager" once per process (/dev/console, /var/local/mtl2.log).
+
+diff --git a/crates/metal2vulkan-runtime/src/encoder.rs b/crates/metal2vulkan-runtime/src/encoder.rs
+index 66efc451..ff633c51 100644
+--- a/crates/metal2vulkan-runtime/src/encoder.rs
++++ b/crates/metal2vulkan-runtime/src/encoder.rs
+@@ -700,6 +700,11 @@ impl EncoderCore {
+         shadows: &[ShadowUse],
+         uses: &[Use<ResourceKey>],
+     ) -> Result<Vec<ShadowCopy>, Error> {
++        // Sunfish 0137 (B65): a converted texture's staging copy, made where its conversion takes
++        // it (as upstream 7ef17497 does), before anything is planned.
++        for shadow in shadows {
++            shadow.copies.prepare()?;
++        }
+         let device = self.device().clone();
+         let aliased = self.aliased(uses);
+         let uses = aliased.as_deref().unwrap_or(uses);
+diff --git a/crates/metal2vulkan-runtime/src/owned_kernel.rs b/crates/metal2vulkan-runtime/src/owned_kernel.rs
+index 11638f17..6892a1ad 100644
+--- a/crates/metal2vulkan-runtime/src/owned_kernel.rs
++++ b/crates/metal2vulkan-runtime/src/owned_kernel.rs
+@@ -78,8 +78,9 @@ pub(super) enum OwnedModule {
+     /// `bind::ycbcr_convert_module`: a YCbCr texture's texels converted from its surface's two
+     /// planes into its image (`ycbcr.rs`), which it binds as a storage image: converted values,
+     /// or (`YCbCrOutput::Codes`) the packed codes. 0128 (G7): with one texture's shape words baked
+-    /// in (`bind::ycbcr_convert_module_baked`), else the shape read from its binding.
+-    YCbCrConvert(YCbCrOutput, Option<BakedShape>),
++    /// in (`bind::ycbcr_convert_module_baked`), else the shape read from its binding. Sunfish 0137
++    /// (B65): `true` writes the converted texels through an `Rgba8` view (`YCbCrCodes::rgba8`).
++    YCbCrConvert(YCbCrOutput, Option<BakedShape>, bool),
+     /// Sunfish 0131 (G7): `bind::ycbcr_fast_module` of one shape: the same texels of a video
+     /// surface's planes, fetched from a uniform texel buffer over the surface's own bytes
+     /// (`ycbcr.rs`), its image bound as a storage image.
+@@ -224,11 +225,12 @@ impl OwnedModule {
+                     .map_err(Error::Compile)?;
+                 Ok((module.spirv.to_vec(), 5, 0))
+             }
+-            OwnedModule::YCbCrConvert(output, baked) => {
+-                let module = metal2vulkan::bind::ycbcr_convert_module_baked(
++            OwnedModule::YCbCrConvert(output, baked, rgba8) => {
++                let module = metal2vulkan::bind::ycbcr_convert_module_stored(
+                     device.compile_device(),
+                     output,
+                     baked.as_ref(),
++                    rgba8, // 0137
+                 )
+                 .map_err(Error::Compile)?;
+                 Ok((module.spirv.to_vec(), 2, 0))
+@@ -359,7 +361,7 @@ pub(super) struct OwnedKernels {
+     plane_copy: Option<OwnedKernel>,
+     index_rewrites: HashMap<(RewriteProgram, RewritePhase), OwnedKernel>,
+     rotate_texels: Option<OwnedKernel>,
+-    ycbcr_converts: HashMap<(YCbCrOutput, Option<BakedShape>), OwnedKernel>,
++    ycbcr_converts: HashMap<(YCbCrOutput, Option<BakedShape>, bool), OwnedKernel>, // 0137: bool
+     ycbcr_fasts: HashMap<YCbCrFast, OwnedKernel>, // 0131
+     two_plane_texels: Option<OwnedKernel>,
+     plane_bytes_copy: Option<OwnedKernel>,
+@@ -421,8 +423,8 @@ impl OwnedKernels {
+             OwnedModule::IndexRewrite(program, phase) => {
+                 self.index_rewrites.get(&(program, phase)).copied()
+             }
+-            OwnedModule::YCbCrConvert(output, baked) => {
+-                self.ycbcr_converts.get(&(output, baked)).copied()
++            OwnedModule::YCbCrConvert(output, baked, rgba8) => {
++                self.ycbcr_converts.get(&(output, baked, rgba8)).copied()
+             }
+             OwnedModule::YCbCrFast(fast) => self.ycbcr_fasts.get(&fast).copied(),
+             OwnedModule::UnusedBits(form, words) => self.unused_bits.get(&(form, words)).copied(),
+@@ -442,8 +444,8 @@ impl OwnedKernels {
+             OwnedModule::IndexRewrite(program, phase) => {
+                 self.index_rewrites.insert((program, phase), kernel);
+             }
+-            OwnedModule::YCbCrConvert(output, baked) => {
+-                self.ycbcr_converts.insert((output, baked), kernel);
++            OwnedModule::YCbCrConvert(output, baked, rgba8) => {
++                self.ycbcr_converts.insert((output, baked, rgba8), kernel);
+             }
+             OwnedModule::YCbCrFast(fast) => {
+                 self.ycbcr_fasts.insert(fast, kernel);
+diff --git a/crates/metal2vulkan-runtime/src/shadow.rs b/crates/metal2vulkan-runtime/src/shadow.rs
+index 7ad5ade8..23e08681 100644
+--- a/crates/metal2vulkan-runtime/src/shadow.rs
++++ b/crates/metal2vulkan-runtime/src/shadow.rs
+@@ -1261,6 +1261,19 @@ impl ShadowCache {
+ }
+ 
+ impl ShadowCopies {
++    /// Sunfish 0137 (B65): make what a converted texture's copy in records beyond what it holds
++    /// from its making: the conversion's staging copy, where the fast conversion does not take
++    /// its buffer now (`YCbCrConversion::prepare`). Ported from upstream metal2vulkan 7ef17497's
++    /// `ShadowCopies::prepare`. Refused as the staging copy's making is.
++    pub(super) fn prepare(&self) -> Result<(), Error> {
++        match &self.source {
++            ShadowSource::Converted {
++                buffer, conversion, ..
++            } => conversion.prepare(buffer.raw()),
++            _ => Ok(()),
++        }
++    }
++
+     /// 0128 (G7): the conversion of converted texels (`ShadowSource::Converted`), whose copy in a
+     /// surface's seed may skip.
+     fn conversion(&self) -> Option<&YCbCrConversion> {
+diff --git a/crates/metal2vulkan-runtime/src/texture/ycbcr_image.rs b/crates/metal2vulkan-runtime/src/texture/ycbcr_image.rs
+index fa5f1bcb..af3bb979 100644
+--- a/crates/metal2vulkan-runtime/src/texture/ycbcr_image.rs
++++ b/crates/metal2vulkan-runtime/src/texture/ycbcr_image.rs
+@@ -44,6 +44,9 @@ fn image_formats(codes: YCbCrCodes) -> [Format; 2] {
+         (YCbCrOutput::Codes, 8) => [Format::R8G8B8A8_UNORM, Format::R32_UINT],
+         (YCbCrOutput::Codes, _) => [Format::A2B10G10R10_UNORM_PACK32, Format::R32_UINT],
+         (YCbCrOutput::Srgb, _) => [Format::R32G32B32A32_SFLOAT; 2],
++        // Sunfish 0137 (B65): an 8-bit 4:2:0 texture's converted texels as 8-bit unorms, written
++        // through an `Rgba8` view (`YCbCrCodes::rgba8`; `SWEET_YCBCR_RGBA8=0`: halves, as before).
++        _ if codes.rgba8() => [Format::R8G8B8A8_UNORM; 2],
+         _ => [Format::R16G16B16A16_SFLOAT; 2],
+     }
+ }
+diff --git a/crates/metal2vulkan-runtime/src/ycbcr.rs b/crates/metal2vulkan-runtime/src/ycbcr.rs
+index 09c0404f..fb10c003 100644
+--- a/crates/metal2vulkan-runtime/src/ycbcr.rs
++++ b/crates/metal2vulkan-runtime/src/ycbcr.rs
+@@ -567,12 +567,61 @@ impl FastConversion {
+     }
+ }
+ 
++/// Sunfish 0137 (B65): `SWEET_YCBCR_LAZY`, read once (on unless `0`): a texture the fast
++/// conversion takes (0131) makes its staging buffer only at the first conversion the fast kernel
++/// does not take (`YCbCrConversion::prepare`: its surface's buffer rebound), so it holds none for
++/// its life (3.1 MB at 1080p); `0` makes it with the texture, as before.
++fn lazy_on() -> bool {
++    static ON: OnceLock<bool> = OnceLock::new();
++    *ON.get_or_init(|| std::env::var("SWEET_YCBCR_LAZY").as_deref() != Ok("0"))
++}
++
++/// Sunfish 0137: the process's line naming the converted texels' image and the staging mode, at
++/// its first conversion.
++fn mode_note() {
++    static ONCE: std::sync::Once = std::sync::Once::new();
++    ONCE.call_once(|| {
++        let out = match metal2vulkan::bind::sweet_ycbcr_rgba8() {
++            true => "rgba8",
++            false => "rgba16f",
++        };
++        let staging = if lazy_on() { "lazy" } else { "eager" };
++        super::shadow::cache_line(&format!("SWEET_YCBCR out {out}, staging {staging}"));
++    });
++}
++
+ /// The conversion of a two-plane YCbCr texture's planes into its image (the module docs): the
+ /// copy in of its shadow (`ShadowSource::Converted`).
+ pub(super) struct YCbCrConversion {
+     /// The planes it converts, and the bytes of their buffer they lie in, which a view as the
+     /// texture's `_sRGB` twin converts too (`texture/ycbcr_image.rs`).
+     source: (YCbCrPlanes, Range<u64>),
++    /// Sunfish 0137 (B65): what the staging copy's making takes ([`Staged::new`]): the device,
++    /// where the planes start in their `VkBuffer`, and the storage view of the image.
++    device: Device,
++    at: u64,
++    view: vk::ImageView,
++    /// The bytes of zeros a texture over plane 1 reads as its chroma past the planes' bytes (0
++    /// for every other texture).
++    zeros: u64,
++    /// 0137: the staging copy, made with the texture where the fast conversion does not take it
++    /// (or `SWEET_YCBCR_LAZY=0`), else at the first conversion it does not take (`prepare`).
++    staged: OnceLock<Staged>,
++    /// 0137: held while one thread makes `staged`, so no two make it.
++    making: Mutex<()>,
++    groups: [u32; 2],
++    /// 0128 (G7): the surface's seed source, shared with the texture's converted views, and the
++    /// seed and 0116 stamp the last planned conversion saw.
++    seed: Arc<OnceLock<SurfaceSeed>>,
++    seed_held: Mutex<Option<(u32, u64)>>,
++    /// Sunfish 0131 (G7): the fast conversion, where it takes the texture (`fast_shape`).
++    fast: Option<FastConversion>,
++}
++
++/// The conversion through a staging copy of the planes' bytes and the kernel (the module docs):
++/// its staging buffer, set and copies. Sunfish 0137 (B65): split out of `YCbCrConversion`, made
++/// only where a conversion takes it.
++struct Staged {
+     /// The shape at its start, the planes' bytes from `BYTES_AT`; held for the texture's life.
+     staging: Buffer,
+     /// The staging buffer's identity and its bytes.
+@@ -587,36 +636,19 @@ pub(super) struct YCbCrConversion {
+     zeros: (u64, u64),
+     kernel: OwnedKernel,
+     sets: OwnedSets,
+-    groups: [u32; 2],
+-    /// 0128 (G7): the surface's seed source, shared with the texture's converted views, and the
+-    /// seed and 0116 stamp the last planned conversion saw.
+-    seed: Arc<OnceLock<SurfaceSeed>>,
+-    seed_held: Mutex<Option<(u32, u64)>>,
+-    /// Sunfish 0131 (G7): the fast conversion, where it takes the texture (`fast_shape`).
+-    fast: Option<FastConversion>,
+ }
+ 
+-impl YCbCrConversion {
+-    /// The conversion of `planes`, whose bytes lie in `bytes` of their buffer, at `at` of its
+-    /// `VkBuffer` (`raw`, 0131), into `view`, a storage view of the texture's image, on `device`,
+-    /// its surface's seed read through `seed` once set (0128). Refused as `new_buffer` refuses
+-    /// the staging buffer and as the kernel's objects are refused.
+-    pub(super) fn new(
++impl Staged {
++    /// The staging copy of `planes`, `span` bytes at `at` of their `VkBuffer`, with `zeros` bytes
++    /// of zeros past them, into `view`. Refused as `new_buffer` refuses the staging buffer and as
++    /// the kernel's objects are refused.
++    fn new(
+         device: &Device,
+-        (planes, bytes_in): (&YCbCrPlanes, Range<u64>),
+-        (raw_in, at): (vk::Buffer, u64),
++        planes: &YCbCrPlanes,
++        (at, span, zeros): (u64, u64, u64),
+         view: vk::ImageView,
+-        seed: Arc<OnceLock<SurfaceSeed>>,
+-    ) -> Result<YCbCrConversion, Error> {
+-        let span = bytes_in.end - bytes_in.start;
++    ) -> Result<Staged, Error> {
+         let bytes = span.next_multiple_of(4);
+-        // The chroma bytes the planes read past their span, zeros (a texture over plane 1,
+-        // whose chroma codes are 0), filled at every conversion.
+-        let [cw, ch] = planes.chroma_size().map(u64::from);
+-        let chroma_row = 2 * u64::from(planes.codes.bytes) * cw;
+-        let [chroma_at, chroma_pitch] = planes.chroma.map(u64::from);
+-        let chroma_end = chroma_at + chroma_pitch * (ch.max(1) - 1) + chroma_row;
+-        let zeros = chroma_end.saturating_sub(bytes).next_multiple_of(4);
+         let held = bytes + zeros;
+         let staging = device.own_buffer(BYTES_AT + held, ResourceOptions::private())?;
+         let (raw, start) = staging.at(0);
+@@ -625,6 +657,7 @@ impl YCbCrConversion {
+         let kernel = device.owned_kernel(OwnedModule::YCbCrConvert(
+             planes.codes.output,
+             baked_shape(planes), // 0128
++            planes.codes.rgba8(), // 0137
+         ))?;
+         let set = OwnedSet {
+             images: Vec::new(),
+@@ -635,6 +668,45 @@ impl YCbCrConversion {
+             ],
+         };
+         let sets = OwnedSets::write_each(device, &[kernel], &[set])?;
++        Ok(Staged {
++            staging_use: (identity.key, range),
++            shape_at: start,
++            shape,
++            into: vk::BufferCopy {
++                src_offset: at,
++                dst_offset: start + BYTES_AT,
++                size: span,
++            },
++            zeros: (start + BYTES_AT + bytes, zeros),
++            staging,
++            kernel,
++            sets,
++        })
++    }
++}
++
++impl YCbCrConversion {
++    /// The conversion of `planes`, whose bytes lie in `bytes` of their buffer, at `at` of its
++    /// `VkBuffer` (`raw`, 0131), into `view`, a storage view of the texture's image, on `device`,
++    /// its surface's seed read through `seed` once set (0128). Refused as `new_buffer` refuses
++    /// the staging buffer and as the kernel's objects are refused.
++    pub(super) fn new(
++        device: &Device,
++        (planes, bytes_in): (&YCbCrPlanes, Range<u64>),
++        (raw_in, at): (vk::Buffer, u64),
++        view: vk::ImageView,
++        seed: Arc<OnceLock<SurfaceSeed>>,
++    ) -> Result<YCbCrConversion, Error> {
++        mode_note(); // 0137
++        let span = bytes_in.end - bytes_in.start;
++        let bytes = span.next_multiple_of(4);
++        // The chroma bytes the planes read past their span, zeros (a texture over plane 1,
++        // whose chroma codes are 0), filled at every conversion.
++        let [cw, ch] = planes.chroma_size().map(u64::from);
++        let chroma_row = 2 * u64::from(planes.codes.bytes) * cw;
++        let [chroma_at, chroma_pitch] = planes.chroma.map(u64::from);
++        let chroma_end = chroma_at + chroma_pitch * (ch.max(1) - 1) + chroma_row;
++        let zeros = chroma_end.saturating_sub(bytes).next_multiple_of(4);
+         let groups = planes
+             .size
+             .map(|n| n.div_ceil(YCbCrConvertModule::LOCAL_SIZE));
+@@ -651,27 +723,55 @@ impl YCbCrConversion {
+             0 => FastConversion::new(device, planes, (raw_in, at, span), view),
+             _ => None,
+         };
++        // 0137 (B65): the staging copy now only where the fast conversion does not take the
++        // texture (or `SWEET_YCBCR_LAZY=0`); else at its first conversion the fast one does not.
++        let staged = OnceLock::new();
++        if fast.is_none() || !lazy_on() {
++            let _ = staged.set(Staged::new(device, planes, (at, span, zeros), view)?);
++        }
+         Ok(YCbCrConversion {
+             fast,
+             source: (*planes, bytes_in),
+-            staging_use: (identity.key, range),
+-            shape_at: start,
+-            shape,
+-            into: vk::BufferCopy {
+-                src_offset: at,
+-                dst_offset: start + BYTES_AT,
+-                size: span,
+-            },
+-            zeros: (start + BYTES_AT + bytes, zeros),
+-            staging,
+-            kernel,
+-            sets,
++            device: device.clone(),
++            at,
++            view,
++            zeros,
++            staged,
++            making: Mutex::new(()),
+             groups,
+             seed,
+             seed_held: Mutex::new(None),
+         })
+     }
+ 
++    /// Sunfish 0137 (B65): make the staging copy where a conversion of the planes in `source`
++    /// (the surface's buffer's `VkBuffer` now) takes it: not the fast conversion's buffer (a
++    /// rebind gave the buffer other pages, `rebind.rs`). Every copy in's planning calls it
++    /// (`Encoder::plan_shadows`), before its uses and its record. Refused as `Staged::new` is.
++    pub(super) fn prepare(&self, source: vk::Buffer) -> Result<(), Error> {
++        let fast = self.fast.as_ref().is_some_and(|fast| fast.raw == source);
++        // A rebound buffer that went records nothing (`ShadowBuffer::raw`).
++        if fast || source == vk::Buffer::null() || self.staged.get().is_some() {
++            return Ok(());
++        }
++        let _making = lock(&self.making);
++        if self.staged.get().is_some() {
++            return Ok(());
++        }
++        let span = self.source.1.end - self.source.1.start;
++        let staged = Staged::new(
++            &self.device,
++            &self.source.0,
++            (self.at, span, self.zeros),
++            self.view,
++        )?;
++        let [w, h] = self.source.0.size;
++        fast_note(|| format!("{w}x{h} staging made at its first rebound conversion"));
++        // Held under `making`: no other thread set it.
++        let _ = self.staged.set(staged);
++        Ok(())
++    }
++
+     /// 0128: the surface's seed source, which the texture's converted views share.
+     pub(super) fn seed_source(&self) -> Arc<OnceLock<SurfaceSeed>> {
+         Arc::clone(&self.seed)
+@@ -699,17 +799,17 @@ impl YCbCrConversion {
+     /// Whether the texture is over plane 1 of its surface, its chroma codes the zeros the
+     /// staging buffer holds past the planes' bytes.
+     pub(super) fn over_plane_one(&self) -> bool {
+-        self.zeros.1 > 0
++        self.zeros > 0
+     }
+ 
+     /// The conversion's uses: `truth`, the read of the planes' bytes, then the staging buffer's
+-    /// writes and read, and the write of every texel of the image of `copies`.
++    /// writes and read (0137: once it was made), and the write of every texel of the image of
++    /// `copies`.
+     pub(super) fn uses(
+         &self,
+         mut truth: Use<ResourceKey>,
+         copies: &ShadowCopies,
+     ) -> Vec<Use<ResourceKey>> {
+-        let (key, range) = self.staging_use.clone();
+         // 0131: the fast kernel reads the planes in place, through its texel buffer.
+         if self.fast.is_some() {
+             truth.read = Access::new(
+@@ -717,6 +817,20 @@ impl YCbCrConversion {
+                 vk::AccessFlags2::TRANSFER_READ | vk::AccessFlags2::SHADER_SAMPLED_READ,
+             );
+         }
++        let image = Use::writes(
++            copies.shadow_key,
++            copies.tracked,
++            copies.shadow_range.clone(),
++            Access::new(
++                vk::PipelineStageFlags2::COMPUTE_SHADER,
++                vk::AccessFlags2::SHADER_STORAGE_WRITE,
++            ),
++        );
++        // 0137: a fast texture's staging buffer, once made, keeps its uses at every conversion.
++        let Some(staged) = self.staged.get() else {
++            return vec![truth, image];
++        };
++        let (key, range) = staged.staging_use.clone();
+         vec![
+             truth,
+             Use {
+@@ -732,15 +846,7 @@ impl YCbCrConversion {
+                     vk::AccessFlags2::TRANSFER_WRITE,
+                 ),
+             },
+-            Use::writes(
+-                copies.shadow_key,
+-                copies.tracked,
+-                copies.shadow_range.clone(),
+-                Access::new(
+-                    vk::PipelineStageFlags2::COMPUTE_SHADER,
+-                    vk::AccessFlags2::SHADER_STORAGE_WRITE,
+-                ),
+-            ),
++            image,
+         ]
+     }
+ 
+@@ -750,7 +856,8 @@ impl YCbCrConversion {
+     /// # Safety
+     ///
+     /// `command_buffer` is recording, outside a render pass; `source`, the staging buffer and
+-    /// the image are live until it completes, and the image is in the `GENERAL` layout.
++    /// the image are live until it completes, and the image is in the `GENERAL` layout; 0137:
++    /// the copy in's planning prepared it (`prepare`) for `source`.
+     pub(super) unsafe fn record(
+         &self,
+         device: &ash::Device,
+@@ -780,15 +887,21 @@ impl YCbCrConversion {
+             }
+             return;
+         }
+-        let staging = self.staging.at(0).0;
++        // 0137: unprepared (no planning made it), the image keeps what it held.
++        let Some(staged) = self.staged.get() else {
++            let [w, h] = self.source.0.size;
++            fast_note(|| format!("{w}x{h} conversion skipped: no staging made for its buffer"));
++            return;
++        };
++        let staging = staged.staging.at(0).0;
+         // SAFETY: the caller's contract; the shape and the copy lie in the staging buffer and
+         // the copy in `source` (checked when the texture was made), and the set binds them.
+         unsafe {
+-            device.cmd_update_buffer(command_buffer, staging, self.shape_at, &self.shape);
+-            device.cmd_copy_buffer(command_buffer, source, staging, &[self.into]);
+-            let (zeros_at, zeros) = self.zeros;
++            device.cmd_update_buffer(command_buffer, staging, staged.shape_at, &staged.shape);
++            device.cmd_copy_buffer(command_buffer, source, staging, &[staged.into]);
++            let (zeros_at, zeros) = staged.zeros;
+             crate::word_fill::record(
+-                self.staging.device(),
++                staged.staging.device(),
+                 command_buffer,
+                 staging,
+                 zeros_at..zeros_at + zeros,
+@@ -798,14 +911,14 @@ impl YCbCrConversion {
+             device.cmd_bind_pipeline(
+                 command_buffer,
+                 vk::PipelineBindPoint::COMPUTE,
+-                self.kernel.pipeline,
++                staged.kernel.pipeline,
+             );
+             device.cmd_bind_descriptor_sets(
+                 command_buffer,
+                 vk::PipelineBindPoint::COMPUTE,
+-                self.kernel.layout,
++                staged.kernel.layout,
+                 0,
+-                &self.sets.sets,
++                &staged.sets.sets,
+                 &[],
+             );
+             device.cmd_dispatch(command_buffer, self.groups[0], self.groups[1], 1);
+diff --git a/crates/metal2vulkan/src/bind/mod.rs b/crates/metal2vulkan/src/bind/mod.rs
+index 0f5afd7a..e239a52a 100644
+--- a/crates/metal2vulkan/src/bind/mod.rs
++++ b/crates/metal2vulkan/src/bind/mod.rs
+@@ -270,8 +270,8 @@ pub use visibility_resolve::{
+     visibility_resolve_module, VisibilityResolve, VisibilityResolveModule,
+ };
+ pub use ycbcr_convert::{
+-    ycbcr_convert_module, ycbcr_convert_module_baked, ycbcr_fast_module, ycbcr_read, ycbcr_texel,
+-    YCbCrCodes, YCbCrConvertModule, YCbCrFast, YCbCrFastModule, YCbCrMatrix, YCbCrOutput,
++    sweet_ycbcr_rgba8, ycbcr_convert_module, ycbcr_convert_module_baked,
++    ycbcr_convert_module_stored, ycbcr_fast_module, ycbcr_read, ycbcr_texel, YCbCrCodes, YCbCrConvertModule, YCbCrFast, YCbCrFastModule, YCbCrMatrix, YCbCrOutput,
+     YCbCrPlanes, YCbCrRange,
+ };
+ pub use ycbcr_write::{ycbcr_store, ycbcr_write, ycbcr_write_module, YCbCrWriteModule};
+diff --git a/crates/metal2vulkan/src/bind/plan/resources.rs b/crates/metal2vulkan/src/bind/plan/resources.rs
+index b15b6c9b..7f00fd84 100644
+--- a/crates/metal2vulkan/src/bind/plan/resources.rs
++++ b/crates/metal2vulkan/src/bind/plan/resources.rs
+@@ -1897,22 +1897,30 @@ fn swizzled_packed(
+ /// specialization drops `EXACT`, so the function takes the device's arm (`lower::sampler::linear`,
+ /// `device_when`) instead of the exact routine's four taps and integer sums; the slot's `VkSampler`
+ /// keeps the Metal sampler's linear filter, checked against the view format at bind. Off, `0`:
+-/// the exact routine, as before.
++/// the exact routine, as before. Sunfish 0137 (B65): an 8-bit 4:2:0 format held as
++/// `R8G8B8A8_UNORM` (`YCbCrCodes::rgba8`) takes the device's filter whatever the switch: its
++/// texels are `c / 255`, off the grid the exact routine sums on.
+ fn sweet_ycbcr_hwfilter(profile: &DeviceProfile, pf: PixelFormat) -> bool {
++    use crate::bind::YCbCrCodes;
+     use crate::device::requirements::VkProperty;
+     use crate::metal::texel_format::PackedTexels;
+     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
++    let rgba8 = || {
++        crate::metal::format::ycbcr_format(pf)
++            .and_then(YCbCrCodes::of)
++            .is_some_and(|c| c.rgba8())
++    };
+     // Not `device_samples()`: that is also true on a natively sampling device (Turnip).
+     PackedTexels::of(pf) == Some(PackedTexels::YCbCr2048)
+         && !profile.fields().enabled.properties.contains(&VkProperty::MetalSampler)
+-        && *ON.get_or_init(|| {
++        && (rgba8() || *ON.get_or_init(|| {
+             let on = std::env::var("SWEET_YCBCR_HWFILTER").map_or(true, |v| v.trim() != "0");
+             crate::env_vars::half_relaxed_note(&format!(
+                 "SWEET_YCBCR_HWFILTER mode {}",
+                 u8::from(on)
+             ));
+             on
+-        })
++        }))
+ }
+ 
+ #[cfg(test)]
+diff --git a/crates/metal2vulkan/src/bind/ycbcr_convert.rs b/crates/metal2vulkan/src/bind/ycbcr_convert.rs
+index f3f31525..ee873bfd 100644
+--- a/crates/metal2vulkan/src/bind/ycbcr_convert.rs
++++ b/crates/metal2vulkan/src/bind/ycbcr_convert.rs
+@@ -186,6 +186,20 @@ impl YCbCrCodes {
+         })
+     }
+ 
++    /// Sunfish 0137 (B65): whether the texture's image holds its converted texels as
++    /// `R8G8B8A8_UNORM` ([`sweet_ycbcr_rgba8`]): an unpacked 8-bit 4:2:0 layout read converted
++    /// (`YCBCR8_420_2P`, over `420v` and `420f`), each channel the device's rounding of the step
++    /// `k / 2048` to `c / 255`, as the bridge's CPU path stores it. 4 bytes a texel, not 8. Not
++    /// Metal's read exactly: a read is off by at most `1/510`, and the exact linear filter's grid
++    /// does not hold (the binder takes the device's filter, `bind::plan::resources`).
++    pub fn rgba8(&self) -> bool {
++        self.output == YCbCrOutput::Converted
++            && self.bits == 8
++            && !self.packed
++            && self.subsampling == ChromaSubsampling::Chroma420
++            && sweet_ycbcr_rgba8()
++    }
++
+     /// The largest code, `2^bits - 1`.
+     fn max(&self) -> u32 {
+         (1 << self.bits) - 1
+@@ -690,15 +704,18 @@ impl Cx {
+ /// symbols `IMAGE`, `SHAPE` and `BYTES` (the module docs). 0128: the tests' (`typed_module_with`).
+ #[cfg(test)]
+ fn typed_module(output: YCbCrOutput) -> BResult<TypedModule> {
+-    typed_module_with(output, None)
++    typed_module_with(output, None, false)
+ }
+ 
+ /// [`typed_module`], or (0128, G7) with the shape's words `baked` in as constants: the same
+ /// texels, but no shape load per invocation, and the code layout's divisions, multiplies and
+ /// shifts by 1 and 0 folded by the driver's compiler. The shape binding stays declared, unread.
++/// Sunfish 0137 (B65): the converted texels stored through an `Rgba8` view where `rgba8`
++/// (`YCbCrCodes::rgba8`), else as before.
+ fn typed_module_with(
+     output: YCbCrOutput,
+     baked: Option<&[u32; YCbCrConvertModule::SHAPE_WORDS as usize]>,
++    rgba8: bool,
+ ) -> BResult<TypedModule> {
+     let mut b = ModuleBuilder::new();
+     let u32_ = b.ty(Type::Int {
+@@ -709,6 +726,8 @@ fn typed_module_with(
+     let uvec2 = b.ty(Type::Vector { elem: u32_, len: 2 })?;
+     let uvec3 = b.ty(Type::Vector { elem: u32_, len: 3 })?;
+     let (sampled_type, format) = match output {
++        // 0137 (B65): the 8-bit 4:2:0 image's `Rgba8` view (`YCbCrCodes::rgba8`).
++        YCbCrOutput::Converted if rgba8 => (f32_, crate::spv::ImageFormat::Rgba8),
+         YCbCrOutput::Converted => (f32_, crate::spv::ImageFormat::Rgba16f),
+         YCbCrOutput::Srgb => (f32_, crate::spv::ImageFormat::Rgba32f),
+         YCbCrOutput::Codes => (u32_, crate::spv::ImageFormat::R32ui),
+@@ -957,9 +976,20 @@ pub fn ycbcr_convert_module_baked(
+     device: &Device,
+     output: YCbCrOutput,
+     baked: Option<&[u32; YCbCrConvertModule::SHAPE_WORDS as usize]>,
++) -> Result<YCbCrConvertModule, Error> {
++    ycbcr_convert_module_stored(device, output, baked, false)
++}
++
++/// Sunfish 0137 (B65): [`ycbcr_convert_module_baked`], its converted texels written through an
++/// `Rgba8` storage view where `rgba8` (an image of [`YCbCrCodes::rgba8`]).
++pub fn ycbcr_convert_module_stored(
++    device: &Device,
++    output: YCbCrOutput,
++    baked: Option<&[u32; YCbCrConvertModule::SHAPE_WORDS as usize]>,
++    rgba8: bool,
+ ) -> Result<YCbCrConvertModule, Error> {
+     let profile = device.profile();
+-    let m = typed_module_with(output, baked)?;
++    let m = typed_module_with(output, baked, rgba8)?;
+     let mut meter = Meter::new(&Budget::default());
+     crate::spirv::verify::verify(&m, profile, &mut meter)?;
+     let r = crate::spirv::serialize::serialize(m)?;
+@@ -976,6 +1006,16 @@ pub fn ycbcr_convert_module_baked(
+     })
+ }
+ 
++/// Sunfish 0137 (B65): `SWEET_YCBCR_RGBA8`, read once (on unless `0`): an 8-bit 4:2:0 texture read
++/// converted holds its texels as `R8G8B8A8_UNORM` (`YCbCrCodes::rgba8`), half the bytes of the
++/// `R16G16B16A16_SFLOAT` image (16.6 -> 8.3 MB at 1080p), the CPU path's precision. `0`: the
++/// half-float image of Metal's exact reads, as before. 10-bit, sRGB and extended-range formats
++/// keep their images either way.
++pub fn sweet_ycbcr_rgba8() -> bool {
++    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
++    *ON.get_or_init(|| std::env::var("SWEET_YCBCR_RGBA8").map_or(true, |v| v.trim() != "0"))
++}
++
+ #[cfg(test)]
+ mod tests;
+ 
+diff --git a/crates/metal2vulkan/src/bind/ycbcr_convert/fast.rs b/crates/metal2vulkan/src/bind/ycbcr_convert/fast.rs
+index e0147437..b7219c4f 100644
+--- a/crates/metal2vulkan/src/bind/ycbcr_convert/fast.rs
++++ b/crates/metal2vulkan/src/bind/ycbcr_convert/fast.rs
+@@ -14,8 +14,8 @@
+ //!
+ //! **The module** (one per shape). One `GLCompute` entry `main`, local size
+ //! ([`YCbCrFast::LOCAL_SIZE`], [`YCbCrFast::LOCAL_SIZE`], 1), no push constants, in set 0:
+-//! [`YCbCrFast::IMAGE_BINDING`], the texture's image as the module above binds it (`Rgba16f` or
+-//! `Rgba32f`); [`YCbCrFast::TEXELS_BINDING`], the texel buffer, from [`YCbCrFast::base`] bytes
++//! [`YCbCrFast::IMAGE_BINDING`], the texture's image as the module above binds it (`Rgba16f`,
++//! `Rgba8` under 0137, or `Rgba32f`); [`YCbCrFast::TEXELS_BINDING`], the texel buffer, from [`YCbCrFast::base`] bytes
+ //! before the planes' first byte, [`YCbCrFast::view_bytes`] long. Invocation `(i, j)` inside the
+ //! chroma plane writes the texels `(2i + dx, 2j + dy)` inside the texture. The consumer dispatches
+ //! [`YCbCrFast::groups`] and orders the planes' writes before `SHADER_SAMPLED_READ` in
+@@ -159,6 +159,9 @@ pub(super) fn typed_module(fast: &YCbCrFast) -> BResult<TypedModule> {
+     let uvec3 = b.ty(Type::Vector { elem: u32_, len: 3 })?;
+     let format = match output {
+         YCbCrOutput::Srgb => crate::spv::ImageFormat::Rgba32f,
++        // Sunfish 0137 (B65): the 8-bit image's `Rgba8` view (`YCbCrCodes::rgba8`, process-wide,
++        // so the shape keys the module as before).
++        _ if p.codes.rgba8() => crate::spv::ImageFormat::Rgba8,
+         _ => crate::spv::ImageFormat::Rgba16f,
+     };
+     let vec4 = b.ty(Type::Vector { elem: f32_, len: 4 })?;
+diff --git a/crates/metal2vulkan/src/bind/ycbcr_convert/tests.rs b/crates/metal2vulkan/src/bind/ycbcr_convert/tests.rs
+index 4e587c8a..27d63739 100644
+--- a/crates/metal2vulkan/src/bind/ycbcr_convert/tests.rs
++++ b/crates/metal2vulkan/src/bind/ycbcr_convert/tests.rs
+@@ -20,6 +20,9 @@ fn the_ycbcr_conversion_kernels_are_valid_on_every_committed_profile() {
+         ] {
+             assert_valid(typed_module(output).expect("module"), &p);
+         }
++        // Sunfish 0137 (B65): the converted texels through an `Rgba8` view.
++        let rgba8 = super::typed_module_with(YCbCrOutput::Converted, None, true);
++        assert_valid(rgba8.expect("module"), &p);
+     }
+ }
+ 
+diff --git a/crates/metal2vulkan/src/metal/format/mod.rs b/crates/metal2vulkan/src/metal/format/mod.rs
+index 1d94ca0a..f0528903 100644
+--- a/crates/metal2vulkan/src/metal/format/mod.rs
++++ b/crates/metal2vulkan/src/metal/format/mod.rs
+@@ -956,10 +956,12 @@ fn one(format: vk::Format) -> Repr {
+ /// ([`ycbcr`]). The others, whose reads are not yet modelled exactly, `NotImplemented`.
+ fn ycbcr_repr(pf: PixelFormat) -> Repr {
+     use crate::bind::{YCbCrCodes, YCbCrOutput};
+-    let format = match ycbcr_format(pf)
+-        .and_then(YCbCrCodes::of)
+-        .map(|c| (c.output, c.bits))
+-    {
++    let codes = ycbcr_format(pf).and_then(YCbCrCodes::of);
++    let rgba8 = codes.is_some_and(|c| c.rgba8());
++    let format = match codes.map(|c| (c.output, c.bits)) {
++        // Sunfish 0137 (B65): an 8-bit 4:2:0 one's converted texels as 8-bit unorms
++        // (`YCbCrCodes::rgba8`, `SWEET_YCBCR_RGBA8=0` as before).
++        Some((YCbCrOutput::Converted, _)) if rgba8 => vk::Format::R8G8B8A8_UNORM,
+         Some((YCbCrOutput::Converted, _)) => vk::Format::R16G16B16A16_SFLOAT,
+         Some((YCbCrOutput::Srgb, _)) => vk::Format::R32G32B32A32_SFLOAT,
+         Some((YCbCrOutput::Codes, 8)) => vk::Format::R8G8B8A8_UNORM,
