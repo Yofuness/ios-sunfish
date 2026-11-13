@@ -225,6 +225,7 @@ static void waitForResource(id resource);
 @property(nonatomic) NSUInteger heapOffset;
 @property(nonatomic) IOSurfaceRef planarSurface;
 @property(nonatomic) uint32_t planarSeed;
+@property(nonatomic) BOOL rendered;   // 0135: has been a render target once (snapshot targets: a fresh import each time)
 @end
 static void planarFill(NBTexture *t);
 @implementation NBBuffer
@@ -707,6 +708,7 @@ static void ctlPush(const CtlRec &r){
  uint64_t ctlC,ctlD,ctlF0,ctlF1,ctlQ;   // sweet ctl stamps
  EncodedWork encodedWork;   // the command buffer's single encoder thread, not global counter deltas
  uint64_t createdUs;
+ uint32_t snapW,snapH;   // 0135: renders into a fresh surface import (backboardd snapshot)
 }
 @property(nonatomic) NmbCommandBuffer *handle;
 @property(nonatomic,strong) NBQueue *queue;
@@ -1675,6 +1677,16 @@ struct CullEntry {bool fill=false,clearOK=false,full=false,rok=false;float col[4
 
 static void completed(void *context);
 static void scheduled(void *context);
+// 0135 (B53): CA renders a snapshot into the client's IOSurface, only commits and replies; the client locks and reads at once.
+// Apple's IOSurfaceLock waits for the GPU, ours doesn't (the client read zeros: black tab thumbnails). So backboardd waits
+// here on the GPU for a pass into a surface that was never a render target before (the display's surfaces are drawn every
+// frame: only their first one matches). The runtime wait, not waitUntilCompleted: its handlers may need this thread's queue.
+static bool snapSyncOn() {static const bool on=[]{const char *p=getenv("SWEET_SNAPSHOT_SYNC");return !strcmp(getprogname(),"backboardd")&&!(p&&*p&&atoi(p)==0);}();return on;}
+static void snapSync(NBCommandBuffer *c) {
+ static std::atomic<uint64_t> n{0};const uint64_t began=nowUs();
+ nmb_command_buffer_wait(c.handle,0);
+ const uint64_t i=++n;if(i<=20||i%100==0)NBLOG(@"SWEET SNAPSYNC: waited %llu us (%ux%u) #%llu",(unsigned long long)(nowUs()-began),c->snapW,c->snapH,(unsigned long long)i);
+}
 @implementation NBCommandBuffer
 - (instancetype)init {
  if((self=[super init])){_scheduledHandlers=[NSMutableArray array];_completedHandlers=[NSMutableArray array];_surfaces=[NSMutableSet set];_resourceOwners=[NSMutableSet set];_handlers=dispatch_group_create();_schedulingHandlers=dispatch_group_create();}
@@ -1747,6 +1759,7 @@ static void scheduled(void *context);
   if(!a.texture)return true;
   if(![(id)a.texture isKindOfClass:[NBTexture class]])return false;
   NBTexture *texture=(NBTexture *)a.texture;if(texture.surface)[_surfaces addObject:texture];
+  if(texture.surface&&!texture.rendered){texture.rendered=YES;if(snapSyncOn()){snapW=(uint32_t)texture.width;snapH=(uint32_t)texture.height;}}   // 0135
   [_resourceOwners addObject:texture];
   out.texture=texture.handle;out.level=a.level;out.slice=a.slice;out.depth_plane=a.depthPlane;out.load=a.loadAction;out.store=a.storeAction;
   if(resolveFixOn()) {   // sweet resolve
@@ -1863,7 +1876,7 @@ static void scheduled(void *context);
   // Completion owns this reference; the runtime orders the non-owning scheduled callback before it.
   void *context=(__bridge_retained void *)self;
   if(nmb_command_buffer_on_completed(_handle,completed,context) &&
-     nmb_command_buffer_on_scheduled(_handle,scheduled,context) && nmb_command_buffer_commit(_handle))return;
+     nmb_command_buffer_on_scheduled(_handle,scheduled,context) && nmb_command_buffer_commit(_handle)){if(snapW)snapSync(self);return;}
   (void)CFBridgingRelease(context);   // refused registration/commit cannot call the registered handlers
   [self refuse:[@"commit: " stringByAppendingString:lastError()]];
  }

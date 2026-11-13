@@ -11,6 +11,7 @@
 #import <ImageIO/ImageIO.h>
 #import <IOSurface/IOSurfaceRef.h>
 #import <dlfcn.h>
+#import <unistd.h>
 #import <objc/message.h>
 
 typedef void (*render_display_fn)(mach_port_t, CFStringRef, IOSurfaceRef, int, int);
@@ -54,6 +55,8 @@ int main(int argc, char **argv)
 		if (!s)
 			return fail("IOSurfaceCreate failed");
 		render(MACH_PORT_NULL, CFSTR("LCD"), s, 0, 0);
+		if (getenv("SHOT_WAIT_MS"))	/* B53 0135 test: give backboardd's GPU work time before the read */
+			usleep(1000 * (useconds_t)strtoul(getenv("SHOT_WAIT_MS"), NULL, 0));
 
 		IOSurfaceLock(s, kIOSurfaceLockReadOnly, NULL);
 		size_t bpr = IOSurfaceGetBytesPerRow(s);
