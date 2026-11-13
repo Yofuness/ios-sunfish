@@ -20,6 +20,8 @@
 #   catrace  [-t] SECONDS [OUT.bin]: Core Animation kdebug points (0x31ca) + thread map; tools/catrace-dump.py
 #   fpfix.dylib  fileproviderd hook (DYLD_INSERT_LIBRARIES): FP library on HFSX (tools/sunfish-install-fpfix.sh)
 #   fpdump   [--enable ID]: FileProvider domains + flags as Files sees them; --enable sets enabled, unhides
+#   btctl    power|discoverable|scan|paired|pair|connect|disconnect|unpair|wait-pair: Bluetooth without Settings
+#            (iOS 27 root; MobileBluetooth C API, btctl-ents.plist; btctl-Info.plist = LE usage string for TCC)
 #   expt, exq, runmigrator: one-off probes of ExtensionFoundation and DataMigration (runmigrator needs
 #   com.apple.migrationpluginwrapper's entitlements, not in git)
 set -euo pipefail
@@ -55,5 +57,6 @@ build mgq mgq.c -framework CoreFoundation	# MobileGestalt answers (ambient light
 build sbcont sbcont.c	# sandbox container path for a pid (xnu 0240 test)
 build autobright autobright.m -fobjc-arc -framework Foundation	# Auto-Brightness via CoreBrightness's client
 build shot shot.m -fobjc-arc -framework Foundation -framework CoreGraphics -framework ImageIO -framework IOSurface	# D7: render-server screenshot (iOSPlus10)
+build btctl btctl.m -fobjc-arc -framework Foundation -Wl,-sectcreate,__TEXT,__info_plist,btctl-Info.plist	# iOS 27 AirPods pairing (MobileBluetooth via dlopen)
 build fpfix.dylib fpfix.m -dynamiclib -fobjc-arc -framework Foundation	# B37: FPDVolume APFS checks off in fileproviderd
 ls -l out

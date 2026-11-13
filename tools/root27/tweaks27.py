@@ -18,7 +18,9 @@ Installs into the image:
   "Using unsecure cache: /System/Library/xpc/launchd.plist", "Cache sent to launchd successfully").
 No network job: the kernel brings ue0 up as 192.168.7.2/24 (patch 0075).
 Bluetooth (--bt part, default on; --no-bt leaves it out):
-- /var/local/bin/{btbridge,bluetool-stub} from --bin (plain arm64, ad hoc, libSystem only) and the WCN3990 firmware
+- /var/local/bin/{btbridge,bluetool-stub} from --bin (plain arm64, ad hoc, libSystem only), btctl (Bluetooth CLI: power,
+  scan, pair, connect without Settings; Foundation + MobileBluetooth by dlopen, signed with phone/tools/btctl-ents.plist)
+  and the WCN3990 firmware
   crbtfw21.tlv + crnv21.bin into /var/local/fw/bt (--btfw: the iOS 16 /var backup or ../restore/fw/vendor/bt; Qualcomm
   firmware, image only, never git). No /var/local/btbridge.snoop: btsnoop capture stays off (touch it to turn it on).
 - launchd.plist as on iOS 16: com.apple.BlueTool ProgramArguments [/usr/sbin/BlueTool, -R] -> [bluetool-stub]
@@ -67,7 +69,7 @@ BT_JOB = {
 }
 BT_ENV = {'BT_HCI_TRANSPORT': 'H4BC:POSIX:com.apple.uart.bluetooth,115200', 'BT_BAUDRATE': '115200'}
 BLUETOOL_ARGS = ['/usr/sbin/BlueTool', '-R']	# the 24B156 job, put back by --remove
-BT_BINS = ['btbridge', 'bluetool-stub']
+BT_BINS = ['btbridge', 'bluetool-stub', 'btctl']
 BT_FW = ['crbtfw21.tlv', 'crnv21.bin']
 WIFI_JOB_KEY = '/System/Library/LaunchDaemons/org.iosonpixel.wland.plist'
 WIFI_JOB = {	# tools/sunfish-install-wifi.sh's dict
