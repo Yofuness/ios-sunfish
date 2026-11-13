@@ -18,6 +18,12 @@ execs mount (pid 2), which dies with SIGBUS. MTE instructions are emulated (1294
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 14:20 k309a: mount's SIGBUS comes with no abort/undef log
+- kernel309 (1298). OBS (../logs/k309/k309a-rescue.txt): same as k308a (launchd 27 bootstraps, mount-phase-1, exec mount,
+  "pid 2 exited -- exit reason namespace 2 subcode 0xa" 7 ms later) and no `sweet-undef:` line: the SIGBUS does not come
+  through handle_user_abort's EXC_BAD_ACCESS path. 1299 logs every psignal of SIGBUS/SEGV/ILL/TRAP/SYS with its kernel
+  caller and every exception->signal translation with pc. kernel310 next.
+
 ### 2026-11-13 13:55 k308a: GATE C1 PASSED: launchd 27 bootstraps; mount (pid 2) dies with SIGBUS
 - kernel308 (1297), same cmdline as k302b. OBS (../logs/k308/k308a-rescue.txt; the live log missed it): TCO + MTE (LDG)
   emulated once each, no sweet-undef; `com.apple.xpc.launchd ... hello, launchd UUID: B6C82430-...`; "Could not opt into 50 MB

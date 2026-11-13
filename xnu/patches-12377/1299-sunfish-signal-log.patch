@@ -1,0 +1,76 @@
+From b89cc8236db31d642311ae64dc4c261b07656436 Mon Sep 17 00:00:00 2001
+From: Yofuness <compiledchickennuggets@gmail.com>
+Date: Fri, 13 Nov 2026 13:03:57 -0500
+Subject: [PATCH] sunfish: log fatal-class signals (sweet-sig: sender) and
+ every exception->signal (sweet-ux: exc/code/subcode/pc) (1299)
+
+---
+ bsd/kern/kern_sig.c       | 14 ++++++++++++++
+ bsd/uxkern/ux_exception.c | 19 +++++++++++++++++++
+ 2 files changed, 33 insertions(+)
+
+diff --git a/bsd/kern/kern_sig.c b/bsd/kern/kern_sig.c
+index c25ed3f..9ed821f 100644
+--- a/bsd/kern/kern_sig.c
++++ b/bsd/kern/kern_sig.c
+@@ -2071,6 +2071,20 @@ psignal_internal(proc_t p, task_t task, thread_t thread, int flavor, int signum,
+ 	mask = sigmask(signum);
+ 	prop = sigprop[signum];
+ 
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++	/* 1299: who sends fatal-class signals (k309a: mount SIGBUS with no exception logged); first 64 */
++	if (signum == SIGBUS || signum == SIGSEGV || signum == SIGILL || signum == SIGTRAP || signum == SIGSYS) {
++		static uint32_t sweet_sig_count = 0;
++		if (os_atomic_inc_orig(&sweet_sig_count, relaxed) < 64U) {
++			proc_t lp = (p != PROC_NULL) ? p : (task != TASK_NULL ? (proc_t)get_bsdtask_info(task) : PROC_NULL);
++			printf("sweet-sig: sig %d to pid %d (%s) flavor 0x%x from %p %p\n", signum,
++			    lp ? proc_getpid(lp) : -1, lp ? proc_best_name(lp) : "?", flavor,
++			    (void *)VM_KERNEL_UNSLIDE(__builtin_return_address(0)),
++			    (void *)VM_KERNEL_UNSLIDE(__builtin_return_address(1)));
++		}
++	}
++#endif /* ARM64_BOARD_CONFIG_SWEET */
++
+ #if SIGNAL_DEBUG
+ 	if (rdebug_proc && (p != PROC_NULL) && (p == rdebug_proc)) {
+ 		ram_printf(3);
+diff --git a/bsd/uxkern/ux_exception.c b/bsd/uxkern/ux_exception.c
+index 1780c2a..10d6a8e 100644
+--- a/bsd/uxkern/ux_exception.c
++++ b/bsd/uxkern/ux_exception.c
+@@ -44,6 +44,10 @@
+ #include <sys/vmparam.h>        /* MAXSSIZ */
+ 
+ #include <sys/ux_exception.h>
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++#include <mach/arm/thread_status.h>
++extern struct arm_saved_state *get_user_regs(thread_t);  /* 1299 */
++#endif
+ 
+ /*
+  * Translate Mach exceptions to UNIX signals.
+@@ -127,6 +131,21 @@ handle_ux_exception(thread_t                    thread,
+ 	/* Translate exception and code to signal type */
+ 	int ux_signal = ux_exception(exception, code, subcode);
+ 
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++	/* 1299: every Mach exception that becomes a signal, with the user pc; first 64 */
++	{
++		static uint32_t sweet_ux_count = 0;
++		if (os_atomic_inc_orig(&sweet_ux_count, relaxed) < 64U) {
++			struct arm_saved_state *rs = get_user_regs(thread);
++			printf("sweet-ux: pid %d (%s) exc %d code 0x%llx subcode 0x%llx -> sig %d pc 0x%llx lr 0x%llx\n",
++			    proc_getpid(p), proc_best_name(p), exception, (unsigned long long)code,
++			    (unsigned long long)subcode, ux_signal,
++			    rs ? (unsigned long long)get_saved_state_pc(rs) : 0ULL,
++			    rs ? (unsigned long long)get_saved_state_lr(rs) : 0ULL);
++		}
++	}
++#endif /* ARM64_BOARD_CONFIG_SWEET */
++
+ 	uthread_t ut = get_bsdthread_info(thread);
+ 
+ 	/*
+-- 
+2.56.0
+

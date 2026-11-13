@@ -62,6 +62,8 @@ New patches (1290+):
   CIGVAC/CIGDVAC) are no-ops and DC GZVA zeroes the DCZID block (k307a: launchd 27 `dc gva, x9` 0xd50b7469 after the first LDG).
 - `1298` abort log for all: 1293's `sweet-undef: ... abort` line for EXC_BAD_ACCESS of any process (first 64 per boot;
   pid 1 always), for k308a's mount[2] SIGBUS.
+- `1299` signal log: `sweet-sig:` (signal, pid, kernel caller) in psignal_internal for SIGBUS/SEGV/ILL/TRAP/SYS and
+  `sweet-ux:` (exception, code, subcode, signal, pc, lr) in handle_ux_exception; first 64 each (k309a: mount SIGBUS unexplained).
 - No patch needed for iOS 27's CPU-feature checks: DIT, SB, SHA512, SHA3, JSCVT, FCMA commpage bits and their
   hw.optional.arm.FEAT_* sysctls come from the ID registers of the boot CPU (an A55) in osfmk/arm/commpage/commpage.c;
   A55/A76 lack all six (GUESS from the Arm TRM values; check `sysctl hw.optional` on the first 12377 boot); commpage 0x10c is zeroed and unwritten; the user timebase type is USER_TIMEBASE_SPEC (CNTVCT, not
