@@ -89,6 +89,15 @@ Switches: VENUSCTL_PRIMARY=1 (linear NV12 on OUTPUT), VENUSCTL_DPB_SETBUF=1, VEN
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
 
+### 2026-11-13 00:30 S0b readbench: imported surface memory is NOT slow (GO); 0131's 64-72 ms is elsewhere
+m2vtest readbench 50 (9d50edf) on t167y, kernel167, idle, GPU 649 MHz, two runs (medians agree within 0.02 ms). 3.1 MB
+1080p NV12, GPU ms median: IOSurface import / anonymous-page import / pool Shared: copy 0.52 / 0.52 / 0.52; NV12 ->
+RGBA8 2.22 / 2.22 / 2.23; NV12 -> RGBA16F 2.51 / 2.50 / 2.51 (0131's fetch pattern, compute 960x540). All on memory
+type 0, 0 wrong bytes (observed). So reading the imported planes costs nothing extra and one conversion is ~2.5 ms,
+~25x less than 0131's 64-72 ms per submit. The cost is in what 0131 does around the conversion (barriers, the real
+RGBA16F image, repeats per frame, pass splits; guess). Next: find it (read-only + one traced run); if fixable, a fixed
+0131 may give the backboardd CPU win (47 -> 16 %) without the ~20 h in-place port.
+
 ### 2026-11-13 00:05 4d plan: in-place YCbCr sampling spec; correction to the 0131 result
 Read-only workflow, spec in research/notes/ycbcr-inplace-spec-2026-11-12.md. CoreAnimation asks for ONE texture per
 decoder surface, format 500 (YCBCR8_420_2P) over plane 0 with ShaderRead only, and relies on the sampler returning RGB
