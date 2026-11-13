@@ -17,6 +17,16 @@ CPUs, UFS, HFS root mounted read-only, launchd exec'd (k301b); iOS 16's launchd 
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 10:50 Full-cache PAC proof of 27.2.1 done; root pipeline designed (Fable investigator)
+- tools/ios27-pac/prove-cache.py on 24B156 (jobs 1 then 2, 3.5 GB cap, 6 GB retry; ~1.3 h): 33,558,075 edits
+  (unwind 32.79M, pointer 0.60M, landing 0.12M, start 39k, call 10k), 97 unproven (stub islands 34, gap islands 61, 2
+  other), 0 unlowerable; failed by OOM: MLIR_ML, WebCore (retry with more RAM later). Output ../restore/ipsw/x/24B156/prove/.
+- Pipeline (research/notes/root27-pipeline-2026-11-13.md): imageboot impossible (needs closed IOHDIXController); ramdisk
+  too small for the 6.8 GB cache; plan = HFSX root built on Linux (Hot's AEA-aware mkiosroot.sh, apfs-fuse, zeta rewrites),
+  /dev/ufsroot1 (userdata from 16 GiB, 1185) as root via a new `ufsrootminor` boot-arg (kernel302). Writing that region
+  replaces iOS 16's /var (question to the user); fallback: an image file in /var + a sector-range minor. Signing: our
+  kernel enforces none (sweet_amfi marks root binaries platform; Hot booted 26 unsigned + cs_integrity_skip=1).
+
 ### 2026-11-13 10:20 k301b: KERNEL301 BOOTS to launchd (sunfish-26.adt, iOS 16 root read-only)
 - `SUNFISH_LLVM_NM=1 ADT=work/boot/sunfish-26.adt tools/sunfish-boot.sh k301b work/kernel301/kernel.development.sweet
   sweetfb_noconsole=0 -v sweetgpu=0 sweetmtl=0 ufsrw=0 rootrw=0`; battery 4456 mV. The 256-byte seed fixed k301a's silent

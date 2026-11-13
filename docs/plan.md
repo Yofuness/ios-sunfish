@@ -51,8 +51,8 @@ when 27's census is clean. xnu-13 source appearing changes nothing before Gate E
 ## Next (in this order; a fresh /loop session starts here)
 1. Stage 0 btsnoop (implementer for btbridge, builder, one phone-runner boot). 2. Stage 2 census in parallel (one
 investigator; both IPSWs are on disk, sha1 verified; extracted files under ../restore/ipsw/x/, out of git).
-3. Gate C: kernel301 RAM boot (sweetgpu=0 sweetmtl=0), first with no root change; then the 27.2.1 root (stage 4:
-   full-cache prover run, rewrite, HFSX region).
+3. Gate C: kernel301 boots to launchd on the iOS 16 root (k301b). Now: kernel302 (ufsrootminor, commpage bits), 27.2.1
+   C1 root image (tools/mkiosroot27.sh, prover done: 33.56M edits, 97 unproven, MLIR_ML/WebCore OOM), then write + boot.
 4. Done 2026-11-13 07:20: gpu15e: 4 video tabs no longer crash; SWEET_YCBCR_GPU=1 default again (video.md). iOS 16 parked.
 
 ## Phone
@@ -62,6 +62,10 @@ bridge 0137 (gpu15e); mtl2-env SWEET_U0011..14=1, SWEET_SURF_FLUSH=1, SWEET_CULL
 Never kill mediaserverd/camd in tests (hard reset 2026-11-13 05:10): reboot instead.
 
 ## Questions for you (Claude took the recommended path meanwhile)
+- **Write the 27.2.1 root over iOS 16's /var region?** (userdata from 16 GiB, fastboot sparse write with a 16 GiB DONT_CARE
+  head, after backing up /var/local; iOS 16's root stays and boots with sweetnofstab=1). It is a userdata flash, which
+  CLAUDE.md forbids without your OK. Meanwhile: the non-destructive path (a ~10-12 GB C1 image as a file in /var over
+  USB, ~2.5-3 h, + a ufsrootbase boot-arg). research/notes/root27-pipeline-2026-11-13.md.
 - App Store (B56, attestation spoofing) and the PowerLog/CoreDuet deletion: still open, parked with the old plan.
 
 ## Your tasks at the phone
