@@ -18,6 +18,17 @@ execs mount (pid 2), which dies with SIGBUS. MTE instructions are emulated (1294
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 14:50 MTE gate traced (Fable investigator; research/notes/mte-gate-2026-11-13.md)
+- OBS: libmalloc (`___malloc_init` 0x1805526a0 `tbz w0,#2` -> cold.6 sets malloc_has_sec_transition -> mfm_memtag_enabled)
+  and the strncmp/strcmp dispatchers read the same thing: bit 2 of `___security_config` (0x1ed9e80b0, libsystem_platform
+  __TPRO_CONST). Its only writer is __apply_security_config from apple[] security_config | 4 if has_sec_transition=="1";
+  our kernel pushes 0x18/0x20158 and no has_sec_transition (Apple's 24B156 kernel doesn't either; it adds dyld_hw_tpro=1).
+  No commpage/sysctl input. So the run-time bit 2 is not from the inputs.
+- GUESS: the word is clobbered by its __TPRO_CONST neighbour (libdyld sAllocatorBuffer 0x1ed9e80a0 / sMemoryManagerBuffer),
+  or our kernel maps the rw- TPRO page differently (no dyld_hw_tpro). Possibly the same bug as mount's ASCII pointer
+  (k310a): the mount investigator checks. Decisive A/B: print the 0x1ed9e8000 page at the first TCO trap.
+- Fallback in the root rewrite: 4 instruction patches (malloc_init tbz -> b; strncmp/strcmp/OSAtomicDequeue csel -> mov).
+
 ### 2026-11-13 14:35 k310a: mount's SIGBUS is a jump to ASCII from dyld's _mach_vm_map
 - kernel310 (1299). OBS (../logs/k310/k310a-rescue.txt): no sweet-sig line (not psignal'd); `sweet-ux: pid 2 (mount) exc 1 code
   0x101 subcode 0x6c756465686353 -> sig 10 pc 0x6c756465686353 lr 0x1857815e8`: EXC_BAD_ACCESS instruction fetch at
