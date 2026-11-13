@@ -261,6 +261,7 @@ Newest first. Earlier soaks were shorter or used other loads, so compare rates, 
 
 | Date | Kernel, bundle | Length | Submits | G1 | G2 | G4 | Other |
 |---|---|---|---|---|---|---|---|
+| 2026-11-13 n10 | kernel167 (0281-0285) everyday args + sweetgpukill=0 sweetwdtcrumb=1, bundle ceb6140 (Turnip 0112, frontend 0132, bridge 0133) | 60 min (3597 s, 8 uisoak chunks), done; VALID | 465 k | 0 | 1 | 1 | 0 backboardd restarts: G4 at 1351 s recovered in 36 ms, device kept (backboardd: 2 command buffers marked error, 0 staging redos). G2 at 3552 s in WebKit.GPU (DEVLOST for that client, recovered), cause logged by xnu 0284: `submit bad buffer 1/4 (iova below window) handle 0 iova 0x0 bytes 0x2b4`. 0 RPMh/SPMI/panics, max 84.8 C, 0 caps |
 | 2026-11-12 n9 | kernel163 (= 162 + xnu 0281 isb, first boot) sweetse9=2 sweetcampmic=2 sweetswapbig=6 sweetampreset=1 sweetpmemwc=2 sweetgpucap=512 sweetwdtcrumb=1, bundle d3316ff | 60 min, full soak, done (3600 s); VOID (1 backboardd restart) | 371 k | 0 | 1 | 0 | First G2 since kernel135 (then 3 in 151 k; now 1 in 371 k: not risen). 0 RPMh timeouts, 0 SPMI retries, no panic/reset, 0 failed recoveries, max 84.1 C, 0 caps, last DCS 51 = 33. Webcam: Maps ghosted text at 22:05 (B50), Safari tab thumbnail with a black garbled block at 22:35 (B53) |
 | 2026-11-02 n8 | kernel158 sweetse9=2 sweetcampmic=2 sweetswapbig=6 sweetampreset=1 sweetwdtcrumb=1 (everyday), bundle 82f6b41, SWEET_CULL=3 | 60 min, full soak, done (3607 s) | 399 k | 0 | 0 | 0 | First soak with 0 hangs of any kind; 0 backboardd restarts, max 82.8 C, 0 caps, nits 33 |
 | 2026-11-02 n7 | kernel152 sweethwcg=1 sweetcxcycle=1 sweetwdtcrumb=1 sweetsmmutcr=3, metal2-cpu, mode 3, cache, knobs on, luma boost off, A55 1497 MHz, GPU 650 MHz | 60 min, full soak, done | 397 k | 0 | 0 | 1 | First full clean soak. G4 at 2564 s recovered, 1 backboardd restart; no silent reset, no CX cycle; max 95.7 C, 60 of 730 readings at 90 C or more, 0 caps, nits 5 |
@@ -271,6 +272,13 @@ Newest first. Earlier soaks were shorter or used other loads, so compare rates, 
 | 2026-10-31 n1 | kernel139, shadow cache, mode 2, A55 1497 MHz | 24.5 min, silent reset | 127 k | 0 | 0 | 0 | Reset to fastboot, no panic line |
 | 2026-10-31 z1 | kernel135, allocator | ~34 min, stopped early | 151 k | 0 | 3 | 2 | - |
 | 2026-10-31 soak1 | kernel134, allocator | 2 boots | ~113 k | 2 | at least 1 | not counted | - |
+
+### 2026-11-13 01:35 G2 cause caught (soak n10, xnu 0284)
+`[3552.997] SWEET MTL: v2 com.apple.WebKit.GPU: submit bad buffer 1/4 (iova below window) handle 0 iova 0x0 bytes 0x2b4
+win 0x1200000000+0x100000000`, same timestamp as `MTL2[369 com.apple.WebKit.GPU]: DEVLOST first (turnip) ...
+tu_knl_darwin.cc:908: submit failed: 0xe00002c2; submits 52603 faults 1` (observed). Entry 1 of 4 has handle 0 and
+iova 0 with a 692-byte size: a submit entry built from a tu_bo that was already finished (zeroed) - the 22:50 guess
+holds. Next: find which CS/BO is freed while still referenced (Fable read-only analysis), fix in Turnip.
 
 ### 2026-11-12 22:50 G2 analysis (read-only, soak n9)
 n9's G2: uptime 2259.440 s (~22:08), backboardd `DEVLOST first (turnip) ... tu_knl_darwin.cc:907: submit failed:
