@@ -1,0 +1,144 @@
+From 6d41d3659c002e250411072a758cb91c08e8e10d Mon Sep 17 00:00:00 2001
+From: Yofuness <compiledchickennuggets@gmail.com>
+Date: Fri, 13 Nov 2026 16:43:20 -0500
+Subject: [PATCH] sunfish: crash report before the initproc/critical-exit panic
+ (user pc/lr/bt, slide, mh, libsystem_c + main __crash_info messages;
+ sweetcrann/sweetcrinfo) and a pid-1 abort_with_payload line (1303)
+
+---
+ bsd/kern/kern_exit.c   | 27 ++++++++++++++++
+ osfmk/kern/exception.c | 73 ++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 100 insertions(+)
+
+diff --git a/bsd/kern/kern_exit.c b/bsd/kern/kern_exit.c
+index 9519bb5..ea33958 100644
+--- a/bsd/kern/kern_exit.c
++++ b/bsd/kern/kern_exit.c
+@@ -1531,6 +1531,18 @@ abort_with_payload_internal(proc_t p,
+ 
+ 	exit_reason = build_userspace_exit_reason(reason_namespace, reason_code,
+ 	    payload, payload_size, reason_string, reason_flags | OS_REASON_FLAG_ABORT);
++#if defined(ARM64_BOARD_CONFIG_SWEET)
++	/* 1303: did launchd take the os_crash -> abort_with_reason path? First 4. */
++	if (proc_getpid(p) == 1) {
++		static int sweet_abort1_lines;
++		if (sweet_abort1_lines < 4) {
++			char *desc = exit_reason != OS_REASON_NULL ? exit_reason_get_string_desc(exit_reason) : NULL;
++			sweet_abort1_lines++;
++			printf("sweet-abort1: pid 1 abort_with_payload ns %u code 0x%llx flags 0x%llx: %s\n",
++			    reason_namespace, reason_code, reason_flags, desc != NULL ? desc : "(none)");
++		}
++	}
++#endif
+ 
+ 	if (internal_flags & OS_REASON_IFLAG_USER_FAULT) {
+ 		if (reason_namespace == OS_REASON_SECURITY_SOFT_TRAPS) {
+@@ -2015,6 +2027,21 @@ proc_handle_critical_exit(proc_t p, int rv)
+ #if defined(ARM64_BOARD_CONFIG_SWEET)
+ 	{
+ 		printf("SWEET: critical exit: %s (signal %d, exit status %d)\n", prefix_str, WTERMSIG(rv), WEXITSTATUS(rv));
++		/*
++		 * 1303: proc_prepareexit's crash printer never runs here (we panic
++		 * below), so print user pc/lr/bt, slide, mh and the CrashReporter
++		 * annotation messages now. The user map is still intact. Once.
++		 */
++		static bool sweet_critexit_logged;
++		if (p == current_proc() && !sweet_critexit_logged) {
++			extern void sweet_crash_log(const char *, int, int, uint64_t, uint64_t);
++			extern void sweet_crash_annotations(const char *, int);
++			struct uthread *sut = current_uthread();
++			sweet_critexit_logged = true;
++			sweet_crash_log(p->p_comm, proc_getpid(p), WTERMSIG(rv),
++			    ((uint64_t)sut->uu_exception << 32) | (uint32_t)sut->uu_code, sut->uu_subcode);
++			sweet_crash_annotations(p->p_comm, proc_getpid(p));
++		}
+ 		sweet_log_flush_now();
+ 	}
+ #endif
+diff --git a/osfmk/kern/exception.c b/osfmk/kern/exception.c
+index ed72a18..2d26cb5 100644
+--- a/osfmk/kern/exception.c
++++ b/osfmk/kern/exception.c
+@@ -1036,6 +1036,79 @@ sweet_crash_log(const char *name, int pid, int sig, uint64_t code, uint64_t subc
+ 	}
+ }
+ 
++/*
++ * 1303: print the CrashReporter annotation messages of the current (exiting)
++ * task: libsystem_c's gCRAnnotations.message (abort() / os_crash text) in the
++ * shared cache and the main executable's own __DATA,__crash_info message.
++ * sweetcrann = unslid cache address of the message pointer (default
++ * 0x1eb1c5410 = _gCRAnnotations+8 in the 24B156 cache; 0 = off),
++ * sweetcrinfo = offset of the message pointer from the main Mach-O header
++ * (default 0x85fa8 = launchd 24B156; 0 = off). message2 (+0x18) too if set.
++ */
++void sweet_crash_annotations(const char *name, int pid);
++
++static void
++sweet_crash_annot_one(const char *name, int pid, const char *what, uint64_t uaddr, char *buf)
++{
++	uint64_t ptr[4] = { 0 };
++	vm_size_t done = 0;
++	int err;
++
++	if ((err = copyin((user_addr_t)uaddr, ptr, sizeof(ptr))) != 0) {
++		printf("sweet-crashmsg: pid %d (%s) %s: copyin 0x%llx err %d\n", pid, name, what, uaddr, err);
++		return;
++	}
++	for (int i = 0; i < 4; i += 3) { /* message, message2 */
++		uint64_t s = ptr[i] & 0x0000007fffffffffULL; /* no PAC/TBI bits */
++		if (s == 0) {
++			if (i == 0) {
++				printf("sweet-crashmsg: pid %d (%s) %s: (null) @0x%llx\n", pid, name, what, uaddr);
++			}
++			continue;
++		}
++		err = copyinstr((user_addr_t)s, buf, 512, &done);
++		buf[511] = 0;
++		if (err != 0 && err != 63) { /* 63 = ENAMETOOLONG: print the first 511 bytes */
++			printf("sweet-crashmsg: pid %d (%s) %s%s: copyinstr 0x%llx err %d\n", pid, name, what,
++			    i ? " msg2" : "", s, err);
++			continue;
++		}
++		printf("sweet-crashmsg: pid %d (%s) %s%s: \"%s\"\n", pid, name, what, i ? " msg2" : "", buf);
++	}
++}
++
++void
++sweet_crash_annotations(const char *name, int pid)
++{
++	task_t task = current_task();
++	uint64_t crann = 0x1eb1c5410ULL, crinfo = 0x85fa8ULL, slide = 0;
++	char *buf;
++
++	PE_parse_boot_argn("sweetcrann", &crann, sizeof(crann));
++	PE_parse_boot_argn("sweetcrinfo", &crinfo, sizeof(crinfo));
++	if (crann == 0 && crinfo == 0) {
++		return;
++	}
++	buf = kalloc_data(512, Z_WAITOK | Z_ZERO);
++	if (buf == NULL) {
++		return;
++	}
++	if (crann != 0) {
++		vm_shared_region_t sr = vm_shared_region_get(task);
++		if (sr != NULL) {
++			slide = sr->sr_slide;
++			vm_shared_region_deallocate(sr);
++			sweet_crash_annot_one(name, pid, "libsystem_c", crann + slide, buf);
++		} else {
++			printf("sweet-crashmsg: pid %d (%s) libsystem_c: no shared region\n", pid, name);
++		}
++	}
++	if (crinfo != 0 && task->mach_header_vm_address != 0) {
++		sweet_crash_annot_one(name, pid, "main", task->mach_header_vm_address + crinfo, buf);
++	}
++	kfree_data(buf, 512);
++}
++
+ /*
+  * SWEET: for a process named in boot-arg sweetscan (comma separated,
+  * default "backboardd,SpringBoard"; "-" = off) that dies with SIGABRT or
+-- 
+2.56.0
+

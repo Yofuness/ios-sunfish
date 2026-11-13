@@ -73,6 +73,13 @@ New patches (1290+):
   shared_region_pager_data_request of a target page, and `... vnpager ... kret page` after each vnode_pagein that read it
   (request counts in `req`). For k310a's "Schedule..." page and the `___security_config` page:
   `sweetprobe1=0x8e90000 sweetprobe2=0xb908000`.
+- `1303` crash report before the critical-exit panic (k313a: launchd 27 died of a bare SIGABRT and the panic came before
+  the `CRASH` printer): in proc_handle_critical_exit (initproc or crash-behavior process, current thread, once) runs
+  sweet_crash_log (`CRASH` slide/mh, pc/lr, 10-frame bt) and prints `sweet-crashmsg:` lines with libsystem_c's
+  gCRAnnotations message/message2 (`sweetcrann` = unslid cache address of the message pointer, default 0x1eb1c5410 for
+  24B156, + the task's sr_slide) and the main image's __crash_info message (`sweetcrinfo` = offset from its Mach-O header,
+  default 0x85fa8 = launchd 24B156); 0 turns each off. abort_with_payload_internal logs `sweet-abort1:` (ns, code,
+  flags, reason) for pid 1, first 4. Notes: research/notes/launchd27-abort-2026-11-13.md section 4.
 - No patch needed for iOS 27's CPU-feature checks: DIT, SB, SHA512, SHA3, JSCVT, FCMA commpage bits and their
   hw.optional.arm.FEAT_* sysctls come from the ID registers of the boot CPU (an A55) in osfmk/arm/commpage/commpage.c;
   A55/A76 lack all six (GUESS from the Arm TRM values; check `sysctl hw.optional` on the first 12377 boot); commpage 0x10c is zeroed and unwritten; the user timebase type is USER_TIMEBASE_SPEC (CNTVCT, not
@@ -147,6 +154,7 @@ Re-checked with 1292 (150 ours, same method): tree hash d7c5c63 equals the tree 
 Re-checked with 1293 (151 ours, same method): tree hash f75d960 equals `sunfish-12377` HEAD be0f2d2, no whitespace errors.
 Re-checked with 1294 (152 ours, 1294 applied to HEAD~1 in a temporary index): tree hash 367d655 equals `sunfish-12377` HEAD db2e009, no whitespace errors.
 Re-checked with 1296 (1296 applied to HEAD~1 = 693f39a in a temporary index, `--whitespace=error`): tree hash 7a53cf1 equals `sunfish-12377` HEAD 09673bf.
+Re-checked with 1303 (applied to HEAD~1 in a temporary index, `--whitespace=error`): tree hash faf59e9 equals `sunfish-12377` HEAD 6d41d36.
 
 Differences from Hot's CI kept on purpose: dxb 6639065 instead of bd88697 (it adds `define_esr_ec_pac_fail_unconditionally`
 and `guard_sptm_user_pointer_ops_with_pac`, both apply under the series), Xcode 26.1 instead of runner's Xcode 26.x.
