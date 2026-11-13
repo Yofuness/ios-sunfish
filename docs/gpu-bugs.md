@@ -273,6 +273,15 @@ Newest first. Earlier soaks were shorter or used other loads, so compare rates, 
 | 2026-10-31 z1 | kernel135, allocator | ~34 min, stopped early | 151 k | 0 | 3 | 2 | - |
 | 2026-10-31 soak1 | kernel134, allocator | 2 boots | ~113 k | 2 | at least 1 | not counted | - |
 
+### 2026-11-13 05:10 B64 crash site: a bug in 0114 itself (cs->device zeroed), fix being written
+Investigator (observed): pc 0x11bf8fe68 = libvulkan_freedreno+0xdfe68 in tu6_emit_rast<A6XX> (+0x2b4), `ldr x10,[x19,#0x28]`
+(cs->device) then `ldr x10,[x10,#0x1b20]` (->physical_device, tu_pipeline.cc:3539): cs->device == NULL. Backtrace
+tu_emit_draw_state <- tu6_draw_common <- tu_CmdDraw <- render.rs:8036 <- ... <- NativeBridgeMetalFrontend.mm:1558
+drawPrimitives, a draw on a live encoder. 0114's failure paths memset the whole cs (tu_cs.h:230 tu_cs_draw_state,
+tu_cs.cc:390 tu_cs_begin_sub_stream_aligned), so device is NULL. Fix: keep device + a valid mode; extend the test knob
+to the sub-stream path (the forced test only hit GROW mode, so it missed this). The 12 encoder/texture refusals share
+the cause (full pool) but did not cause the crash; the bridge returns nil encoders on refusal (legal-ish, ObjC no-op).
+
 ### 2026-11-13 05:00 Turnip 0114 on the phone: forced refusals don't crash; new OOM crash site with 4 video tabs (B64)
 t167z (kernel167, boot 20261113-043007). SWEET_CS_FAIL_TEST=50 (+ MESA_LOG_FILE=/var/local/mesa0114.log, since
 mesa_loge goes to an uncaptured stderr): 6 "sweet 0114: cs ... BO refused (-2) (forced), recording to the sink" (cmd
