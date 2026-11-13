@@ -18,6 +18,12 @@ execs mount (pid 2), which dies with SIGBUS. MTE instructions are emulated (1294
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 15:45 k312a: no pmap nesting changes nothing: the bad shared-cache data is in the pages themselves
+- kernel312 (1301) + sweetsrnest=0. OBS (../logs/k312/k312a-rescue.txt): launchd 27 bootstraps; TCO + MTE emulated again
+  (___security_config still has bit 2); mount still `sweet-ux: ... pc 0x6c756465686353` ("Schedul"). H1 (nested pmap leak)
+  ruled out. Remaining: page contents wrong (H2: page-in returns another block, or the on-device data differs from the
+  image). Next, in parallel: ufsroot1 vs root27-c1.img chunk hashes (phone, read-only) and 1302 pager page-in probe.
+
 ### 2026-11-13 15:20 k311a: sweetsrnest=0 panics in pmap_trim (nothing nested); 1301 skips the trim
 - kernel311 (1300) + `sweetsrnest=0`. OBS (../logs/k311/k311a-rescue.txt): launchd mapped the 80 cache files, then
   `panic: pmap_trim_internal: grand range not in nested region, vstart=0x199708000, size=0x187948000, state=0 @pmap.c:9342`
