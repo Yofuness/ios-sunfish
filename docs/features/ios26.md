@@ -18,6 +18,18 @@ execs mount (pid 2), which dies with SIGBUS. MTE instructions are emulated (1294
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 16:45 k313a: fixed root written; launchd 27 runs early boot to the end (24 processes), then SIGABRT
+- Rewrite: `fastboot -S 256M flash userdata ../restore/root27/root27-c1-at16g.simg` (simg-hfs, sha256 b07d551d...), 44 chunks,
+  118 s. Verify on iOS 16: 45 sampled chunks (incl. .25/.54/.77.dylddata) vs host hashes: 0 differ.
+- kernel313 (probes on), same cmdline + sweetprobe1/2. OBS (../logs/boots/20261113-161847.log, ../logs/k313/k313a-rescue.txt):
+  no SWEET EMU tco/mte (the MTE paths were the stale data); probes read both target pages as 0 (correct); mount-phase-1/2,
+  /dev/ufsroot1 hfs journaled, mount/mount_hfs/mobile_obliterator clean; 24 execs: launchd mount mount_hfs seputil
+  mobile_obliterator mount apfs_boot_util MSUEarlyBootTask MobileAssetEarlyBootTask cc_fips_test keybagd usermanagerd
+  dirs_cleaner xpcroleaccountd init_featureflags auearlyboot aidearlyboot tzinit FinishRestoreFromBackup finish_demo_restore
+  sysstatuscheck prng_seedctl launchd_cache_loader ("Cache sent to launchd successfully") init_exclavekit; 26.036 "Early boot
+  complete. Continuing system boot."; 26.075 pid 1 exited, namespace 2 subcode 0x6 (SIGABRT), no reason line -> panic.
+- Next: why launchd 27 aborts right after early boot (Fable investigator on the log + launchd).
+
 ### 2026-11-13 16:00 simg-hfs.py: the root sparse image now writes every allocated block, zero pages included
 - tools/root27/simg-hfs.py (stdlib) reads the HFS+ header + allocation bitmap of root27-c1.img: allocated = RAW (zero runs
   >= 16 blocks as FILL 0), free runs = DONT_CARE, both volume headers RAW, 16 GiB DONT_CARE in front. Wired into
