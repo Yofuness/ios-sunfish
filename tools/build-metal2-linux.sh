@@ -175,7 +175,9 @@ cp "$TURNIP" "$BU/libvulkan_freedreno.dylib"
 llvm-strip -x "$BU/libvulkan_freedreno.dylib"
 "$SIGN" "$BU/libvulkan_freedreno.dylib"
 "$SIGN" "$BU"	# ldid signs the main executable and writes _CodeSignature/CodeResources
-"$CC" "${CPUFLAG[@]}" -O2 -Wall -o "$MO/m2vtest" "$P/m2vtest.c" "$BRIDGE" -Wl,-dead_strip 2>&1 | grep -v "was built for newer" || true
+# m2vtest readbench (S0b): its shader's SPIR-V and the Vulkan headers; without them m2vtest builds without the mode
+glslangValidator -V --target-env vulkan1.2 --vn readbench_comp -o "$MO/readbench_comp.h" "$P/shaders/readbench.comp" >/dev/null
+"$CC" "${CPUFLAG[@]}" -O2 -Wall -I "$MO" -I "$SRC/mesa/include" -o "$MO/m2vtest" "$P/m2vtest.c" "$BRIDGE" -Wl,-dead_strip 2>&1 | grep -v "was built for newer" || true
 llvm-strip -x "$MO/m2vtest" && "$SIGN" "$MO/m2vtest"
 llvm-nm -m "$BU/SweetMetal2" | grep "weak external" | grep -v "dynamically looked up" || true
 cp "$TURNIP" "$MO/"
