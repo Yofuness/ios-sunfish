@@ -26,8 +26,9 @@ Only items Claude can move now. User tasks are listed below and never gate work;
    2. Done 2026-11-03: firmware boots, H.264 session opens/closes; 10/10 rounds idle, 29/29 under 15 min UI load (s7c).
    3. Done 2026-11-03 (v3e): `venusctl decode` bit-exact vs ffmpeg at 320x240 and 1280x720. Left: speed on a long clip.
    4. ▶ Done 2026-11-03: 4a venusd, 4b VT plugin, 4c Safari H.264 via Venus, venusd at boot + recovery. 2026-11-12: picture
-      right (B62 was the flame-shot), no lag, start gap ~0.5 s. 4d: GPU path works 2026-11-13 (bundle 0394a9d,
-      SWEET_YCBCR_GPU=1: 30 fps, 4/1048 dropped, backboardd 24 %); next: 15 min video run, 720p/HEVC/camera, then default. 4e HEVC.
+      right (B62 was the flame-shot), no lag, start gap ~0.5 s. 4d: done 2026-11-13: GPU path is the default
+      (SWEET_YCBCR_GPU=1 via install-speed; 15 min 1080p 14/24239 dropped, backboardd ~20 %; 720p/HEVC/camera ok). Left: B64
+      (4 video tabs: GPU pool OOM -> WebKit.GPU crash), B63 (camera mediaserverd 500-600 %). 4e HEVC.
    5. Tuning: heat, 4K, several streams at once (feeds).
 2. **3D**: done 2026-11-03: three.js games_fps (WebGL 2) 15 min, 0 hangs (7.4 fps). Left: speed.
 3. **Wi-Fi throughput** (B57): 0.53 -> 3.0 (Interactive) -> 5.8 MB/s (HT20, ht1) on 2026-11-03. Next: wland's CPU
@@ -35,7 +36,7 @@ Only items Claude can move now. User tasks are listed below and never gate work;
 4. **App Store access**: blocked on device attestation (B56: FairPlay/Anisette fail, media token 401); waiting for the
    user's decision (Questions). Meanwhile: WebGL speed (games_fps 7 fps, GPU-bound).
 5. **GPU stability**: G1 (no recovery) and G4 (backboardd restart); nightly soak; fix whichever rises (gpu.md).
-6. **Garbled and undrawn images** (B44, B53): Notes attachments, Safari tab thumbnails, Music icon, Maps glitch.
+6. **Garbled and undrawn images** (B44, B53): Notes attachments, Maps glitch (Safari tab tiles mostly draw now, B53).
 7. **Upstream takeaways** (2026-11-12, best first; backlog U12-*): done 2026-11-12: keep VkDevice (0112, A/B 2/2),
    isb (0281), [device limits] filled (0132, 38/39 fields; check Photos/B44 next); U12-1b bridge 0133 (A/B 2/2, kept on); YCbCr sampled in place (video CPU, 6-10 h),
    cheap checks: submit cuts, FS constlen, cold cache, MSAA A/B. Older items: "Upstream" below.
@@ -49,19 +50,17 @@ Listed with exact log lines and rates in [gpu-bugs.md](gpu-bugs.md) (not auto-lo
 stops phone work, or doubles in rate after a change (then turn that change off first).
 
 ## Phone
-Claude's since 2026-11-12 21:03 (the user). Booted t167y: kernel167 (= kernel162 + xnu 0281 isb, 0282 GetStatus NotReady after a
+Claude's since 2026-11-12 21:03 (the user). Booted t167z (2026-11-13 04:30): kernel167 (= kernel162 + xnu 0281 isb, 0282 GetStatus NotReady after a
 failed recovery, 0283 atomic flame-shot, 0284 G2 submit logging, 0285 lost span), bundle c916fe4+ (+ Turnip 0112 keep VkDevice, 0113 G2 fix,
-frontend 0132 device limits, 0135 snapshot sync, bridge 0133 restart redo, 0134), venusd/vtvenus 6a24d64 (stall detectors, VT QoS), wland 206585d
+frontend 0132 device limits, 0135 snapshot sync, 0136, bridge 0133 restart redo, 0134, Turnip 0114 CS OOM sink), venusd/vtvenus 6a24d64 (stall detectors, VT QoS), wland 206585d
 (HT20, Interactive, bounds checks), camd + hapticd Interactive, cam41. Everyday boot: `tools/sunfish-test.sh -k 167 TAG sweetse9=2 sweetcampmic=2 sweetswapbig=6
 sweetampreset=1 sweetpmemwc=2 sweetgpucap=512 sweetgpukill=0` (sweetgpukill=0 since 2026-11-12: backboardd survives recovered hangs with 0112; t166z was booted without it). /var/local/mtl2-env = SWEET_U0011..14=1,
-SWEET_SURF_FLUSH=1, SWEET_CULL=3 (TU_FETCH_GMEM_MIN_DRAWS=20 removed: G8) (tools/sunfish-install-speed.sh); backboardd env CA_DISABLE_LUMA_BOOST=1 CA_FORCE_TIMER=1.
+SWEET_SURF_FLUSH=1, SWEET_CULL=3, SWEET_YCBCR_GPU=1 (TU_FETCH_GMEM_MIN_DRAWS=20 removed: G8) (tools/sunfish-install-speed.sh); backboardd env CA_DISABLE_LUMA_BOOST=1 CA_FORCE_TIMER=1.
 
 ## Next (in this order)
-0. Hand-off 2026-11-13 04:05 (session ended at 530 K context; ultracode off: single agents, CLAUDE.md):
-   a) GPU video path default: 15 min 1080p run + 720p/HEVC + camera preview with SWEET_YCBCR_GPU=1 (video.md 04:00), then
-      make it the default (off: SWEET_YCBCR_GPU=0) if clean. b) G2: Turnip 0113 installed (fix), watch soaks for "submit bad".
-   c) B53 left: Safari background-tab tiles never snapshotted. d) Turnip NULL write on refused CS BO (gpu-bugs.md 03:40).
-   e) Night soak tonight on kernel167 + bundle 0394a9d.
+0. 2026-11-13 05:00: a) done: GPU video path default (video.md 05:00). b) G2: Turnip 0113 installed, watch soaks for
+   "submit bad". c) B53 mostly works (disk cache; gpu.md 04:55). d) Turnip 0114 installed (t167z): forced refusals don't
+   crash; B64 = new OOM crash site with 4 video tabs (A/B + analysis running). e) Night soak tonight on kernel167 + 0114.
 1. Wi-Fi CPU: userland batching (356c09a) didn't help (bat, 20:40); the per-frame reads + one /dev/wlan write per frame
    dominate: a kernel batched input path is the next step (parked behind the items below).
 2. Video CPU: credit path done (mediaserverd 55 -> 20, venusd 32 -> 10, 0 drops). Left: backboardd ~45 (vImage; bridge 0131

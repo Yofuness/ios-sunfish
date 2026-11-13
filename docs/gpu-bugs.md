@@ -273,6 +273,16 @@ Newest first. Earlier soaks were shorter or used other loads, so compare rates, 
 | 2026-10-31 z1 | kernel135, allocator | ~34 min, stopped early | 151 k | 0 | 3 | 2 | - |
 | 2026-10-31 soak1 | kernel134, allocator | 2 boots | ~113 k | 2 | at least 1 | not counted | - |
 
+### 2026-11-13 05:00 Turnip 0114 on the phone: forced refusals don't crash; new OOM crash site with 4 video tabs (B64)
+t167z (kernel167, boot 20261113-043007). SWEET_CS_FAIL_TEST=50 (+ MESA_LOG_FILE=/var/local/mesa0114.log, since
+mesa_loge goes to an uncaptured stderr): 6 "sweet 0114: cs ... BO refused (-2) (forced), recording to the sink" (cmd
+cs 4096-dword, draw cs x4, tile store 2048-dword), 0 "skipping a failed command buffer" lines (skip path not seen),
+0 crashes / G1 / G2 / G4 / backboardd restarts; 1080p page 1407 frames, 5 dropped in 48 s; video right on the webcam.
+Real pool exhaustion (4 looping video tabs, pool 807 MB): 12x "native-metal: command buffer refused: renderCommandEncoder:
+render encoder: OutOfMemory(Device)" in WebKit.GPU, then WebKit.GPU SIGSEGV far 0x1b20 pc 0x11bf8fe68 ([1107.599]),
+page black after; 0 backboardd restarts. Not the 0114 site. Rate: 1 of 1 four-tab runs, 0 in single-tab runs. A/B and
+crash-site analysis running.
+
 ### 2026-11-13 04:30 Fix written: Turnip 0114 (CS allocation failure sink), not built or tested yet
 Ports Mesa 584a0997c8e ("tu: Propagate allocation failures for tu_cs_* functions", not in our base): a refused CS BO
 marks the cs failed and points emits at a 16384-dword sink; vkEndCommandBuffer returns the OOM error. Ours on top: a

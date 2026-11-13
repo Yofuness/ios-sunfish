@@ -23,6 +23,14 @@
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
 
+### 2026-11-13 04:55 B53 phone test (gpu15b step 4): background tiles mostly draw; disk cache works
+t167z. Safari/Thumbnails (container 2A0FE743...) holds 9 *.ktx (762 B - 198 KB), six written 04:48-04:52 during the
+test. Tab switcher with 16 tabs: page A's tile drawn, a WebGL tab's tile drawn live; after backgrounding Safari 10 s,
+killing MobileSafari only and relaunching: 4 of 6 visible tiles drawn, 2 compass placeholders (old tabs). oslog -n
+MobileSafari history: no TabSnapshots lines (private or not logged at this level). So the disk path writes and reads
+back (KTX/ASTC fine); the remaining placeholders are likely tabs never saved before earlier test kills (guess (a) of
+04:50). Left: match the two placeholder tabs to files (the 762/1236-byte ones?).
+
 ### 2026-11-13 04:50 B53 background tab tiles: hibernated tabs come only from the disk cache (read-only analysis)
 Observed (disassembly research/re/b53/tabctl*.s): -[BrowserRootViewController snapshotContentProviderForTab:] returns
 nil for a hibernated tab (or !contentIsReadyForSnapshot) that is not blank, so TabController's snapshot request never

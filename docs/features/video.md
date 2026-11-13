@@ -1,5 +1,5 @@
 # Video playback and hardware decode
-**State:** 🟡 Safari plays H.264 720p with Venus hardware decode and the picture is right: an atomic flame-shot of the playing video equals ffmpeg's frame (mean |diff| 1.22; B62 was a capture artefact), 30.0 fps, 0 dropped, no lag behind the page clock in two 65 s runs (2026-11-12). Earlier: software decode 250-590 % of one core; hardware decode: research done, decoder slot loads, the Venus engine decodes H.264 bit-exact from a phone tool, 1080p at 217 fps raw, VideoToolbox decodes H.264 through our plugin in mediaserverd, 1080p 60 fps, bit-exact (stage 4b). **Updated:** 2026-11-12.
+**State:** 🟡 GPU colour conversion is the default (2026-11-13: 15 min 1080p clean, 14/24239 dropped, backboardd ~20 %, 720p/HEVC clean; off: drop SWEET_YCBCR_GPU=1 from mtl2-env). Safari plays H.264 720p with Venus hardware decode and the picture is right: an atomic flame-shot of the playing video equals ffmpeg's frame (mean |diff| 1.22; B62 was a capture artefact), 30.0 fps, 0 dropped, no lag behind the page clock in two 65 s runs (2026-11-12). Earlier: software decode 250-590 % of one core; hardware decode: research done, decoder slot loads, the Venus engine decodes H.264 bit-exact from a phone tool, 1080p at 217 fps raw, VideoToolbox decodes H.264 through our plugin in mediaserverd, 1080p 60 fps, bit-exact (stage 4b). **Updated:** 2026-11-13.
 
 ## Facts
 - The iPhone X decodes video in hardware (AppleAVD); the port has no AVD, so iOS falls back to software decoders.
@@ -88,6 +88,14 @@ Switches: VENUSCTL_PRIMARY=1 (linear NV12 on OUTPUT), VENUSCTL_DPB_SETBUF=1, VEN
 
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
+
+### 2026-11-13 05:00 SWEET_YCBCR_GPU=1 is the default now (tools/sunfish-install-speed.sh; off: delete the line)
+Camera A/B (t167z, kernel167, bundle with Turnip 0114, boot 20261113-043007, rear Photo, dark room so both previews
+black): GPU path mediaserverd 601 %, camd 19 %, backboardd 10 %, GPU 6-8 %, mediaserverd footprint 134 MB, no kill
+in 356 s; CPU path mediaserverd ~500 % (3 of its 30 s windows void), camd 20-23 %, backboardd 15-16 %, and mediaserverd
+grew to 32.35 GB and was killed by "low swap" every ~45-50 s ([311], [357], [403]). So the GPU path is no worse for the
+camera and avoids that leak; mediaserverd's 500-600 % is its own bug (backlog B63). With the 15 min run (04:30) clean,
+the GPU path is the default. Open: 4 looping video tabs exhaust the GPU pool and crash WebKit.GPU (B64, A/B running).
 
 ### 2026-11-13 04:30 GPU video path 15 min run clean; 720p/HEVC clean; two open points (gpu15)
 kernel167 (boot 20261113-031745, not rebooted), bundle as at 04:00, SWEET_YCBCR_GPU=1 added to mtl2-env + backboardd
