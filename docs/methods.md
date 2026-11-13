@@ -131,6 +131,9 @@ Subagents that run these: `.claude/agents/` (phone-runner, builder, implementer,
   `systemd-run --user --scope -p MemoryMax=8G ipsw dyld disass research/dsc/dyld_shared_cache_arm64 --image QuartzCore > research/re/QuartzCore.s`
   Then grep for `_stub` calls and the symbols of the `__ZN…` functions that contain them.
 - **Never run `ipsw dyld xref --all`:** it ran the 16 GB PC out of memory.
+- **PAC proof of an iOS 26/27 shared cache:** `tools/ios27-pac/prove-cache.py --cache DSC_MAIN` (zeta's prover +
+  the 3 iOS 27 fixes, per-process memory cap, resumable; out dir `../restore/ipsw/x/<build>/prove/`). See
+  `tools/ios27-pac/README.md`; a full cache needs > 8 GB free (VM off).
 - **Copying a big file from the phone:** boot with `flamereboot=0`, and give `ssh` `</dev/null` inside
   `while read` loops (otherwise it reads the rest of the loop's input).
 
