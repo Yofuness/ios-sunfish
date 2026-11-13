@@ -54,9 +54,9 @@ Done 2026-11-13: stages 0-4, Gates A, B, C (C1 13:55, C2 17:15: SSH into iOS 27.
 `fastboot -S 256M flash userdata ../restore/root27/root27-c1-at16g.simg` (tools/mkiosroot27.sh; never img2simg -s), then
 `SUNFISH_LLVM_NM=1 ADT=work/boot/sunfish-26.adt tools/sunfish-boot.sh TAG work/kernel315/kernel.development.sweet rd=ufsroot1
 ufsrw=1 rootrw=1 launchd_unsecure_cache=1 ignition_level=1 cs_integrity_skip=1 sweetfb_noconsole=0 -v sweetgpu=0 sweetmtl=0`.
-1. AICMR_MATCH assert (kills ~11 daemons incl. backboardd) and cryptexd's trap: investigator running -> kernel fix.
-2. Stage 6 early (bluetoothd already runs on 27): port 0226 (btbridge kctl) + 0231 to patches-12377, btbridge + BT env /
-   BlueTool stub in tools/root27/tweaks27.py; then the AirPods capture on 27 when the user is home.
+1. AICMR fixed (1305, k316a); cryptexd's trap (single-step-like at libaxis) still open.
+2. Stage 6: DONE up to pairing (kernel317 + 1226/1231/1305/1306, tweaks27 bt/wifi, btctl): iOS 27 pairs with the laptop,
+   A2DP/AVRCP/HFP connect (18:35). Next: AirPods (U-AP2, user home tonight), AACP decode; LE scan sees 0 adverts (check).
 3. Stage 5 (Gate D): display (IOMFB/framebuffer path for SpringBoard), touch, then the GPU; identity N104 (uname shows
    iPhone10,3); full root profile (PosterBoard, mediaanalysisd missing in C1).
 4. Cleanup: the debug patches 1293/1298/1299/1302/1303 stay (off switches); MTE emulation stays as a net.
@@ -72,7 +72,7 @@ bridge 0137 (gpu15e); mtl2-env SWEET_U0011..14=1, SWEET_SURF_FLUSH=1, SWEET_CULL
 - App Store (B56, attestation spoofing) and the PowerLog/CoreDuet deletion: still open, parked with the old plan.
 
 ## Your tasks at the phone
-In [user-tasks.md](user-tasks.md): U-X26 done (Xcode 26.1); U-AP1 closed (AirPods capture waits for the user to be home); the old iOS 16 ones are parked.
+In [user-tasks.md](user-tasks.md): **U-AP2: AirPods on iOS 27, when you're home**; U-X26 done (Xcode 26.1); U-AP1 closed (AirPods capture waits for the user to be home); the old iOS 16 ones are parked.
 
 ## Backlog
 Broken/Later/Optimize in [backlog.md](backlog.md); iOS 16 items stay there, parked by the new direction.

@@ -23,6 +23,20 @@
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
 
+### 2026-11-13 18:35 k317c: BLUETOOTH PAIRING WORKS ON iOS 27.2.1 (btctl, phone-initiated SSP with the laptop glizzy)
+- kernel317 + 27 root (ssh+bt+wifi tweaks), btctl (1b824ff) copied over SSH. OBS: `btctl power on` -> "power: on", address
+  39:90:21:74:07:00; `btctl scan 20 -c` found "glizzy" 00:A5:54:B6:9B:1B (classic) at 2 s; LE scan: CoreBluetooth powered
+  on but 0 LE adverts seen (open). `btctl pair 00:A5:54:B6:9B:1B 90`: SSP numeric comparison 698363 accepted both sides,
+  "pairing event 3 (complete) result 0"; connect: services 0x1/0x8/0x10/0x100000 CONNECTED. glizzy: Paired/Bonded/Connected,
+  UUIDs incl. Audio Source 110a, A2DP 110d, AVRCP 110c/110e, HFP-AG 111f, PBAP, MAP, GATT + 5 Apple vendor UUIDs.
+- btsnoop (../logs/bt/k317c-phone.btsnoop, 929 frames; laptop btmon ../logs/bt/k317c-laptop.btsnoop, 703; out of git):
+  link key request -> negative reply -> IO cap -> user confirmation -> Simple Pairing Complete -> Link Key Notification ->
+  auth + encryption; SDP 80, RFCOMM 40 (HFP 28), ATT 146, AVDTP 36 (SetConfiguration + Open accepted), AVRCP 34, SMP 4.
+  Only errors: ATT Attribute Not Found during GATT discovery. glizzy set back to Discoverable/Pairable no; pairing kept.
+- Note: bluetoothd restarted once ~1 min after boot (pid 97 -> 589) before settling. The runner used `pkill -f` once
+  (killed its own shell only; CLAUDE.md forbids it: reminded in later specs).
+- Next: AirPods Pro 2 on iOS 27 (U-AP2, the user's hands, tonight): btctl scan/pair + btsnoop -> AACP decode.
+
 ### 2026-11-13 18:00 k317a/b: bluetoothd on iOS 27 stays up and completes HCI init (kernel317, 1306)
 - kernel317 (1306: PRIV_GLOBAL_PROC_INFO for platform binaries). OBS: 0 "privilege 1002" lines; k317b: bluetoothd exec'd once,
   alive at 3 min, "SWEET BTBR: kernel control connected by bluetoothd (unit 1)", termios 115200, no disconnect (k317a still
