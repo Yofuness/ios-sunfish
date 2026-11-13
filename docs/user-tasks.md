@@ -7,6 +7,10 @@ reads the answers here or in chat. Moved out of docs/plan.md on 2026-10-30 (the 
 - U-X26 DONE 2026-11-13 06:55 (../restore/xcode/Xcode_26.1_Universal.xip). (2026-11-13, the iOS 26/27 direction) Xcode 26.1 for the new build VM: sign in at
   https://developer.apple.com/download/all/ with your Apple ID, download "Xcode 26.1" (.xip, ~3 GB) and put it in
   `../restore/xcode/` (create it). Also fine: Xcode 16.2 for a first try. Claude can't do this (Apple ID login). ~10 min.
+- U-AP1 (2026-11-13, stage 0 LibrePods capture) AirPods Pro 2 next to the phone (iOS 16, btsnoop recording is on
+  from now on): open the case lid near the phone, put the AirPods in your ears ~60 s (connect; play anything for a few
+  seconds if handy, e.g. Pirates.mp3 in Filza), then back in the case. Any time today; say "AP1 done HH:MM" in chat.
+  Claude pulls /var/local/bt/btsnoop-*.log and decodes AACP. ~3 min.
 - (The iOS 16 tasks below are parked by the new direction; answer them only if convenient.)
 - U1 flashlight button by hand: tap on/off, long-press for a lower level. ~2 min.
 - U3 battery % while discharging: phone off the charger 30 min, on kernel106 with sweetbattery=2 (Claude boots it). (B13)
