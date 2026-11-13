@@ -17,6 +17,14 @@ CPUs, UFS, HFS root mounted read-only, launchd exec'd (k301b); iOS 16's launchd 
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 12:10 k303a: dyld cache MAPS (1292); launchd 27 then dies on SIGILL
+- kernel303 (1292: 8 GiB shared region), same cmdline as k302b. OBS (../logs/k303/k303a-rescue.txt; the live log missed
+  this boot): 25.461 exec launchd; libignition "hello from launchd.1"; 80 "not in trust cache" warnings; 25.750
+  "dyld[1]: dyld cache mapped system-wide: customer, auth GOTs: unmapped"; 25.83 USB-ECM configured; 25.857/25.858 launchd
+  "triggered unnest of range 0x1f2000000->0x1f6000000 / ->0x1fc000000"; 25.888 "pid 1 exited -- exit reason namespace 2
+  subcode 0x4" (SIGILL) -> panic "initproc failed to start (signal 4)". No PC/instruction printed. No daemons exec'd.
+- Next: kernel304 with an EL0-undef print (pid, PC, word, shared-cache offset) to find the instruction.
+
 ### 2026-11-13 12:00 k302b: LAUNCHD 27 RUNS on the phone (27.2.1 root on ufsroot1, rw); dies on the shared-cache map
 - `rd=ufsroot1 ufsrw=1 rootrw=1 launchd_unsecure_cache=1 ignition_level=1 cs_integrity_skip=1 -v sweetgpu=0 sweetmtl=0`
   (kernel302, sunfish-26.adt, 4456 mV). OBS (../logs/k302/k302b-rescue.txt, boots/20261113-114816.log): 28.597 hfs journal
