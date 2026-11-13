@@ -17,6 +17,13 @@ CPUs, UFS, HFS root mounted read-only, launchd exec'd (k301b); iOS 16's launchd 
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 13:35 k307a: MTE emulation works (LDG); next SIGILL is `dc gva, x9`
+- kernel307 (1296). OBS (../logs/k307/k307a-rescue.txt): `SWEET EMU: first tco emulated (pid=1 ...)`, `SWEET EMU: first mte
+  emulated (pid=1 pc=0x19ab34e90 insn=0xd9600008)`, then `sweet-undef: pid 1 (launchd) ... pc 0x19ab17d40 word 0xd50b7469`
+  = `dc gva, x9` (MTE tag set by VA; llvm-mc). launchd still dies before "Darwin Bootstrapper Version".
+- 1297 adds the MTE DC ops to the emulator (GVA + tag clean ops as no-ops, GZVA = block zero); matcher checked against
+  llvm-mc encodings. kernel308 next.
+
 ### 2026-11-13 13:15 k306a: same LDG with hardened_heap off: the MTE gate is elsewhere
 - kernel306 (1295). OBS (../logs/k306/k306a-rescue.txt): `sweet-nomte: security_config 0x20158 (task 0x20159) mask 1`; TCO
   emulated once (strncmp MTE variant still chosen); `sweet-undef: pid 1 ... pc 0x198a34e90 word 0xd9600008 slide 0x184c8000`

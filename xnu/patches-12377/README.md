@@ -58,6 +58,8 @@ New patches (1290+):
   stay UNDEF. Counted as `mte` in sweet.emu_stats, first hit logged (`SWEET EMU: first mte emulated`). A fallback for
   k305a's LDG SIGILL whatever sets the tagging path. `sweetnomte` bit 3, default on (sleh default 15; kern_exec's 7
   only reads bits 0 and 2).
+- `1297` MTE DC ops: in 1296's emulator, DC GVA and the tag clean ops (CGVAC/CGDVAC/CGVAP/CGDVAP/CGVADP/CGDVADP/
+  CIGVAC/CIGDVAC) are no-ops and DC GZVA zeroes the DCZID block (k307a: launchd 27 `dc gva, x9` 0xd50b7469 after the first LDG).
 - No patch needed for iOS 27's CPU-feature checks: DIT, SB, SHA512, SHA3, JSCVT, FCMA commpage bits and their
   hw.optional.arm.FEAT_* sysctls come from the ID registers of the boot CPU (an A55) in osfmk/arm/commpage/commpage.c;
   A55/A76 lack all six (GUESS from the Arm TRM values; check `sysctl hw.optional` on the first 12377 boot); commpage 0x10c is zeroed and unwritten; the user timebase type is USER_TIMEBASE_SPEC (CNTVCT, not

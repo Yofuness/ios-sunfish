@@ -1,0 +1,43 @@
+From d144240bff21839a3d4fe652b69b4d4f4cf765c9 Mon Sep 17 00:00:00 2001
+From: Yofuness <compiledchickennuggets@gmail.com>
+Date: Fri, 13 Nov 2026 12:52:01 -0500
+Subject: [PATCH] sunfish: EL0 emulation of MTE DC tag ops: DC GVA and the tag
+ clean/invalidate ops as no-ops, DC GZVA as a plain block zero (1297)
+
+---
+ osfmk/arm64/sleh.c | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
+index d6aa608..d9599ed 100644
+--- a/osfmk/arm64/sleh.c
++++ b/osfmk/arm64/sleh.c
+@@ -729,6 +729,25 @@ sweet_emu_mte(arm_saved_state64_t *ss, uint64_t pc, uint32_t insn)
+ 		if (form != 2U) {
+ 			sweet_emu_write_x(ss, rn, base + (uint64_t)off, true);
+ 		}
++	} else if ((insn & 0xFFFFFFE0U) == 0xD50B7480U) {   /* SYS #3, C7, C4, #4 */
++		/* 1297: DC GZVA, Xt: zero the DC ZVA block (DCZID_EL0 size), no tags */
++		static const char zeros[64] = { 0 };
++		uint64_t bs = 4ULL << (__builtin_arm_rsr64("DCZID_EL0") & 0xFULL);
++		uint64_t addr = sweet_emu_read_x(ss, rd, false) & ~(bs - 1ULL);
++		for (uint64_t done = 0; done < bs; done += sizeof(zeros)) {
++			vm_size_t n = (vm_size_t)((bs - done) < sizeof(zeros) ? (bs - done) : sizeof(zeros));
++			if (copyout(zeros, (user_addr_t)sweet_emu_tbi_uaddr(addr + done), n) != 0) {
++				sweet_emu_deliver_bad_access(addr + done);
++			}
++		}
++	} else if ((insn & 0xFFFF0000U) == 0xD50B0000U && ((insn >> 12) & 0xFU) == 7U &&
++	    ((((insn >> 8) & 0xFU) == 4U && ((insn >> 5) & 7U) == 3U) ||
++	    ((((insn >> 8) & 0xFU) == 10U || ((insn >> 8) & 0xFU) == 12U || ((insn >> 8) & 0xFU) == 13U ||
++	    ((insn >> 8) & 0xFU) == 14U) && (((insn >> 5) & 7U) == 3U || ((insn >> 5) & 7U) == 5U)))) {
++		/*
++		 * 1297: tag-only DC ops (SYS #3, C7, Cm, #op2): GVA (C4 #3), CGVAC/CGDVAC (C10), CGVAP/CGDVAP (C12),
++		 * CGVADP/CGDVADP (C13), CIGVAC/CIGDVAC (C14) with op2 3 or 5: no tags here, nothing to do.
++		 */
+ 	} else {
+ 		return false;
+ 	}
+-- 
+2.56.0
+
