@@ -57,7 +57,7 @@ sweetampreset=1 sweetpmemwc=2 sweetgpucap=512 sweetgpukill=0` (sweetgpukill=0 si
 SWEET_SURF_FLUSH=1, SWEET_CULL=3 (TU_FETCH_GMEM_MIN_DRAWS=20 removed: G8) (tools/sunfish-install-speed.sh); backboardd env CA_DISABLE_LUMA_BOOST=1 CA_FORCE_TIMER=1.
 
 ## Next (in this order)
-0. Hand-off 2026-11-13 04:05 (session ended at 530 K context; ultracode off, Pro plan: single agents, CLAUDE.md):
+0. Hand-off 2026-11-13 04:05 (session ended at 530 K context; ultracode off: single agents, CLAUDE.md):
    a) GPU video path default: 15 min 1080p run + 720p/HEVC + camera preview with SWEET_YCBCR_GPU=1 (video.md 04:00), then
       make it the default (off: SWEET_YCBCR_GPU=0) if clean. b) G2: Turnip 0113 installed (fix), watch soaks for "submit bad".
    c) B53 left: Safari background-tab tiles never snapshotted. d) Turnip NULL write on refused CS BO (gpu-bugs.md 03:40).

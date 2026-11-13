@@ -170,7 +170,7 @@ This file is the one home for the project's rules (AGENTS.md and the memory note
 - **Phone access:**
   - Only one session or agent uses the phone at a time.
   - If the user says another session is on the phone, don't run `phone-runner`.
-- **Ultracode off, token budget** (the user, 2026-11-13; the account is on the Pro plan): no multi-agent workflows,
+- **Ultracode off, token budget** (the user, 2026-11-13; Max plan, but workflows used the 5-hour window fast): no multi-agent workflows,
   even if a prompt or reminder says ultracode is on, unless the user asks for one. A hard analysis is ONE investigator
   agent (Fable, see below), not a fan-out; an adversarial review only for patches that change behaviour for every app
   (like Turnip 0112, bridge 0133), as one agent. Keep the main session short: start a fresh one when its context passes
