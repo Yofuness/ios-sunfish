@@ -18,6 +18,14 @@ execs mount (pid 2), which dies with SIGBUS. MTE instructions are emulated (1294
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 15:00 mount's ASCII pointer: kernel shared-region view (Fable; research/notes/mount27-sigbus-2026-11-13.md)
+- OBS: x9 = dyld's `___syscall_logger` (cache .25.dylddata `__DATA` page 0, unslid 0x1eaf71ca8), loaded at 0x180491584; zero on
+  disk and in root27-c1.img (dylddata not rewritten, cmp identical); launchd's cache dyld reads the same page as zero, mount
+  (7 ms after exec, deterministic in k308a/k309a/k310a) reads "Schedule..." there. Not the rewrite, not "auth GOTs:
+  unmapped" (normal on a customer cache). ___security_config (k304a) is the same symptom in __TPRO_CONST (NO_REBASE page).
+- GUESS H1: launchd's COW/unnest of the 0x1f0000000 block leaks its private page into the nested shared pmap; H2: pager page
+  re-read through the UFS data path returns another block. 1300 adds `sweetsrnest=0` (no pmap nesting) as the A/B.
+
 ### 2026-11-13 14:50 MTE gate traced (Fable investigator; research/notes/mte-gate-2026-11-13.md)
 - OBS: libmalloc (`___malloc_init` 0x1805526a0 `tbz w0,#2` -> cold.6 sets malloc_has_sec_transition -> mfm_memtag_enabled)
   and the strncmp/strcmp dispatchers read the same thing: bit 2 of `___security_config` (0x1ed9e80b0, libsystem_platform

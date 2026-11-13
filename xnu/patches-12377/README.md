@@ -64,6 +64,8 @@ New patches (1290+):
   pid 1 always), for k308a's mount[2] SIGBUS.
 - `1299` signal log: `sweet-sig:` (signal, pid, kernel caller) in psignal_internal for SIGBUS/SEGV/ILL/TRAP/SYS and
   `sweet-ux:` (exception, code, subcode, signal, pc, lr) in handle_ux_exception; first 64 each (k309a: mount SIGBUS unexplained).
+- `1300` `sweetsrnest=0` (default 1 = as before): the shared region enters each task without pmap nesting; A/B for
+  k310a (mount sees foreign data in a shared-region __DATA page; research/notes/mount27-sigbus-2026-11-13.md, H1).
 - No patch needed for iOS 27's CPU-feature checks: DIT, SB, SHA512, SHA3, JSCVT, FCMA commpage bits and their
   hw.optional.arm.FEAT_* sysctls come from the ID registers of the boot CPU (an A55) in osfmk/arm/commpage/commpage.c;
   A55/A76 lack all six (GUESS from the Arm TRM values; check `sysctl hw.optional` on the first 12377 boot); commpage 0x10c is zeroed and unwritten; the user timebase type is USER_TIMEBASE_SPEC (CNTVCT, not

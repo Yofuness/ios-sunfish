@@ -1,0 +1,35 @@
+From f65181423e31d3a9e81d0d6cb4bb31ee04572238 Mon Sep 17 00:00:00 2001
+From: Yofuness <compiledchickennuggets@gmail.com>
+Date: Fri, 13 Nov 2026 13:42:33 -0500
+Subject: [PATCH] sunfish: sweetsrnest=0 maps the shared region without pmap
+ nesting (A/B for a foreign shared-region data page) (1300)
+
+---
+ osfmk/vm/vm_shared_region.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/osfmk/vm/vm_shared_region.c b/osfmk/vm/vm_shared_region.c
+index 079b19e..4ab7380 100644
+--- a/osfmk/vm/vm_shared_region.c
++++ b/osfmk/vm/vm_shared_region.c
+@@ -112,6 +112,8 @@ TUNABLE_WRITEABLE(int, panic_on_dyld_issue, "panic_on_dyld_issue", PANIC_ON_DYLD
+ 
+ /* 1292: 8 GiB arm64 shared region for iOS 27's cache; sweetsr27=0 goes back to 12377's 6 GiB */
+ TUNABLE(int, sweet_sr27, "sweetsr27", 1);
++/* 1300: sweetsrnest=0 maps the shared region into each task without pmap nesting (A/B for k310a's foreign data page) */
++TUNABLE(int, sweet_srnest, "sweetsrnest", 1);
+ #define SWEET_SR_SIZE_ARM64_OLD 0x180000000ULL
+ 
+ /*
+@@ -2335,7 +2337,7 @@ vm_shared_region_insert_submap(vm_map_t map, vm_shared_region_t shared_region, b
+ 	}
+ 
+ 	/* The pmap-nesting is triggered by the "vmkf_nested_pmap" flag. */
+-	vmk_flags.vmkf_nested_pmap = true;
++	vmk_flags.vmkf_nested_pmap = (sweet_srnest != 0);  /* 1300 */
+ 	vmk_flags.vm_tag = VM_MEMORY_SHARED_PMAP;
+ 
+ 	/*
+-- 
+2.56.0
+
