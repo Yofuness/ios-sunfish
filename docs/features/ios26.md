@@ -17,6 +17,13 @@ CPUs, UFS, HFS root mounted read-only, launchd exec'd (k301b); iOS 16's launchd 
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 11:00 kernel302 built (1290 root on any UFS minor, 1291 TPRO emulation)
+- 1290: rd=ufsrootN picks the minor (ufsrootminor=N overrides); minor 2 = userdata byte range ufsrootbase/ufsrootcount
+  (4 KiB aligned, ro unless ufsrw=1). 1291: Hot's sleh EL0 emulator returns 0 for `mrs S3_3_C4_C0_3` and steps over the 3
+  TPRO words (sweettproemu=0 off). Commpage SHA3/SHA512/SB/FCMA/JSCVT/DIT come from the ID registers (commpage.c:419-614),
+  0x10c is unused + zeroed, timebase USER_TIMEBASE_SPEC: no patch (check `sysctl hw.optional` on the first 27 boot).
+- Build (append path): exit 0, 101 s; work/kernel302/kernel.development.sweet 21254400 B, sha256 7669dd17...
+
 ### 2026-11-13 10:50 Full-cache PAC proof of 27.2.1 done; root pipeline designed (Fable investigator)
 - tools/ios27-pac/prove-cache.py on 24B156 (jobs 1 then 2, 3.5 GB cap, 6 GB retry; ~1.3 h): 33,558,075 edits
   (unwind 32.79M, pointer 0.60M, landing 0.12M, start 39k, call 10k), 97 unproven (stub islands 34, gap islands 61, 2
