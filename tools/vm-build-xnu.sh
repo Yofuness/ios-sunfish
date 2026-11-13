@@ -8,18 +8,32 @@
 # dSYM and CTF are skipped by default (BUILD_DSYM=0 DO_CTFMERGE=0 on the kernel make line; saves ~14 s); --full
 # builds them as CI does. The VM is left running: back-to-back builds reuse it, pass --stop (or run
 # ~/VMs/macos/vm-stop.sh) at the end of a session.
+# Env (defaults = the iOS 16 build in the Sonoma VM): VM_DIR=~/VMs/macos, MACOS_VERSION=13.5 (dxb's xnu release),
+# XC=/Applications/Xcode_15.0.1.app, PATCH_DIR=xnu/patches (relative to port/), KDK_MODE=kdk (build.sh's own KDK
+# handling) or fake (no KDK: an empty ~/xnubuild/no-kdk as KDKROOT, after Bergamota's use_kdk=false). Second VM
+# (macos15, xnu-12377): VM_DIR=~/VMs/macos15 MACOS_VERSION=26.5 XC=/Applications/Xcode_26.1.app
+# PATCH_DIR=xnu/patches-12377 KDK_MODE=fake tools/vm-build-xnu.sh NN. Only one VM may run (tools/macos-vm/vm-guard.sh).
 # Usage: tools/vm-build-xnu.sh NN [--clean] [--full] [--stop]   -> work/kernelNN/ (same layout as gh run download -n xnu-kernel)
 set -euo pipefail
 NN=${1:?usage: $0 NN [--clean] [--full] [--stop]}; shift
 CLEAN=0; STOP=0; FULL=0
 for a in "$@"; do case $a in --clean) CLEAN=1;; --full) FULL=1;; --stop) STOP=1;; *) echo "unknown arg $a" >&2; exit 2;; esac; done
 PORT=$(cd "$(dirname "$0")/.." && pwd)
-VM=${VM_DIR:-$HOME/VMs/macos}
+VM=${VM_DIR:-${MACOS_VM_DIR:-$HOME/VMs/macos}}
+export VM_DIR=$VM MACOS_VM_DIR=$VM   # vm-start.sh, vssh and the .py helpers then use the same VM
+MACOS_VERSION=${MACOS_VERSION:-13.5}
+XC=${XC:-/Applications/Xcode_15.0.1.app}
+PATCH_DIR=${PATCH_DIR:-xnu/patches}; case $PATCH_DIR in /*) ;; *) PATCH_DIR=$PORT/$PATCH_DIR;; esac
+KDK_MODE=${KDK_MODE:-kdk}
+case $KDK_MODE in kdk|fake) ;; *) echo "KDK_MODE must be kdk or fake" >&2; exit 2;; esac
+[ -d "$PATCH_DIR" ] || { echo "no patch dir $PATCH_DIR" >&2; exit 2; }
 OUT=$PORT/work/kernel$NN
 JOBS=${VM_JOBS:-}   # empty = build.sh default; set e.g. VM_JOBS=6 if the 8 GB VM swaps
 T0=$(date +%s)
 vs() { "$VM/vssh" -o ConnectTimeout=5 "$@"; }
 
+# two-VM guard before the first ssh: another VM on port 2222 would answer instead of ours
+D=$VM; . "$PORT/tools/macos-vm/vm-guard.sh"; vm_guard || exit 1
 if ! vs true </dev/null 2>/dev/null; then
   "$VM/vm-start.sh"
   for i in $(seq 60); do vs true </dev/null 2>/dev/null && break; sleep 5; done
@@ -28,15 +42,15 @@ fi
 
 # patches in, fresh each run (removed patches must not linger)
 vs 'rm -rf ~/xnubuild/patches-in && mkdir -p ~/xnubuild/patches-in' </dev/null
-tar -C "$PORT/xnu/patches" -cf - . | vs 'tar -C ~/xnubuild/patches-in -xf -'
+tar -C "$PATCH_DIR" -cf - . | vs 'tar -C ~/xnubuild/patches-in -xf -'
 
-vs "CLEAN=$CLEAN FULL=$FULL JOBS='$JOBS' /usr/local/bin/bash -s" <<'REMOTE' || FAIL=1
+vs "CLEAN=$CLEAN FULL=$FULL JOBS='$JOBS' MACOS_VERSION='$MACOS_VERSION' XC='$XC' KDK_MODE='$KDK_MODE' /usr/local/bin/bash -s" <<'REMOTE' || FAIL=1
 set -euo pipefail
 export PATH=/usr/local/bin:$PATH
 DXB_REPO=https://github.com/blacktop/darwin-xnu-build
 DXB_SHA=663906528d1cd5ea8fde7de6f16de73db9511549
-export MACOS_VERSION=13.5 KERNEL_CONFIG=DEVELOPMENT MACHINE_CONFIG=SWEET MAKEFLAGS=-k
-XC=/Applications/Xcode_15.0.1.app
+export MACOS_VERSION KERNEL_CONFIG=DEVELOPMENT MACHINE_CONFIG=SWEET MAKEFLAGS=-k
+export -n XC KDK_MODE   # came in through ssh's env prefix: keep them out of build.sh's environment, as before
 export DEVELOPER_DIR=$XC/Contents/Developer
 [ "$(xcode-select -p)" = "$DEVELOPER_DIR" ] || sudo xcode-select -s "$XC"
 [ -x /usr/local/bin/xcodes ] || { printf '#!/bin/sh\nexit 0\n' | sudo tee /usr/local/bin/xcodes >/dev/null; sudo chmod +x /usr/local/bin/xcodes; }
@@ -65,7 +79,21 @@ if [ $INC = 1 ] && [ -n "$OLDSUMS" ]; then
 elif [ $INC = 1 ]; then MODE=repatch; fi
 # pristine build.sh and patches dir, then ours on top (as CI's fresh checkout)
 git checkout -q -- build.sh patches; git clean -fdq patches
-cp ~/xnubuild/patches-in/*.patch ~/xnubuild/patches-in/*.sh patches/
+case $MACOS_VERSION in
+  26.*) PSUB=patches/26.0; PPRE=sweet- ;;
+  15.*) PSUB=patches/15.0; PPRE=sweet- ;;
+  *) PSUB=patches; PPRE= ;;
+esac
+if [ -z "$PPRE" ]; then cp ~/xnubuild/patches-in/*.patch ~/xnubuild/patches-in/*.sh patches/
+else for f in ~/xnubuild/patches-in/*.patch ~/xnubuild/patches-in/*.sh; do [ -e "$f" ] || continue; cp "$f" "$PSUB/$PPRE$(basename "$f")"; done; fi
+if [ "$KDK_MODE" = fake ]; then
+  # no KDK (Bergamota use_kdk=false; IOS-26-Hot's fake-kdk): SWEET links no closed KDK libs. Drop dxb's KDK header
+  # copy (a CoreEntitlements V2 stage script in PATCH_DIR stands in) and point KDKROOT at an empty dir so build.sh
+  # does not download a KDK.
+  ls ~/xnubuild/patches-in/*.sh 2>/dev/null | grep -qi coreentitlements || { echo "KDK_MODE=fake: no CoreEntitlements stage script (*coreentitlements*.sh) in PATCH_DIR" >&2; exit 1; }
+  rm -f "$PSUB/00_setup_coreentitlements.sh"
+  mkdir -p ~/xnubuild/no-kdk; export KDKROOT=~/xnubuild/no-kdk
+fi
 perl -pi -e 's/ARCHS="x86_64 arm64e" VALID_ARCHS="x86_64 arm64e"/ARCHS="x86_64 arm64e arm64" VALID_ARCHS="x86_64 arm64e arm64"/' build.sh
 grep -q 'VALID_ARCHS="x86_64 arm64e arm64"' build.sh
 # build.sh hardcodes make -j8 (= the VM vCPUs); VM_JOBS=N lowers it if 8 GB swaps

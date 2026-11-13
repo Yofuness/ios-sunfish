@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # Drive the VM over QMP: vmctl.py shot OUT.png | click X Y | key K [K...] | type TEXT | move X Y
 import json, socket, sys, os, subprocess, time
-# VM data (disk, state, keys, credentials) lives outside git, in $MACOS_VM_DIR
-D = os.environ.get('MACOS_VM_DIR', os.path.expanduser('~/VMs/macos'))
+# VM data (disk, state, keys, credentials) lives outside git, in $VM_DIR (or $MACOS_VM_DIR; default ~/VMs/macos)
+D = os.environ.get('VM_DIR') or os.environ.get('MACOS_VM_DIR') or os.path.expanduser('~/VMs/macos')
 W, H = 1920, 1200
 def qmp(cmds):
     s = socket.socket(socket.AF_UNIX); s.connect(os.path.join(D, 'qmp.sock')); f = s.makefile('rw')

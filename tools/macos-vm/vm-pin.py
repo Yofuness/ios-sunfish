@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # Pin the build VM's vCPU threads 1:1 to host E-cores 4-11; QEMU's other threads go to the P-cores 0-3.
 import json, os, socket, subprocess
-# VM data (disk, state, keys, credentials) lives outside git, in $MACOS_VM_DIR
-D = os.environ.get('MACOS_VM_DIR', os.path.expanduser('~/VMs/macos'))
+FIRST = int(os.environ.get('VM_PIN_FIRST', '4'))  # first host core for vCPU 0
+# VM data (disk, state, keys, credentials) lives outside git, in $VM_DIR (or $MACOS_VM_DIR; default ~/VMs/macos)
+D = os.environ.get('VM_DIR') or os.environ.get('MACOS_VM_DIR') or os.path.expanduser('~/VMs/macos')
 s = socket.socket(socket.AF_UNIX); s.connect(os.path.join(D, 'qmp.sock')); f = s.makefile('rw')
 f.readline(); f.write('{"execute":"qmp_capabilities"}\n'); f.flush(); f.readline()
 f.write('{"execute":"query-cpus-fast"}\n'); f.flush()
@@ -15,5 +16,5 @@ for tid in os.listdir(f'/proc/{pid}/task'):
     if int(tid) not in vcpus.values():
         os.sched_setaffinity(int(tid), {0, 1, 2, 3})
 for idx, tid in sorted(vcpus.items()):
-    os.sched_setaffinity(tid, {4 + idx})
-    print(f'vcpu {idx} thread {tid} -> cpu {4 + idx}')
+    os.sched_setaffinity(tid, {FIRST + idx})
+    print(f'vcpu {idx} thread {tid} -> cpu {FIRST + idx}')

@@ -1,8 +1,11 @@
 #!/bin/bash
 # Start the build VM in the background: resume from state.zst (saved by vm-stop.sh) when there is one, else boot.
 # Then set the VNC password, pin the vCPUs, set the guest clock, wait for SSH.
-# VM data (disk, state, keys, credentials) lives outside git, in $MACOS_VM_DIR
-D=${MACOS_VM_DIR:-$HOME/VMs/macos}
+# VM data (disk, state, keys, credentials) lives outside git, in $VM_DIR (or $MACOS_VM_DIR; default ~/VMs/macos)
+D=${VM_DIR:-${MACOS_VM_DIR:-$HOME/VMs/macos}}
+export VM_DIR=$D MACOS_VM_DIR=$D
+# two-VM guard first, before anything touches this VM (the second VM shares port 2222, VNC :1, cores 4-11)
+. "$(dirname "$(readlink -f "$0")")/vm-guard.sh"; vm_guard || exit 1
 [ -f "$D/qemu.pid" ] && kill -0 "$(cat "$D/qemu.pid")" 2>/dev/null && { echo "already running"; exit 0; }
 rm -f "$D/qmp.sock" "$D/mon.sock"
 t0=$(date +%s.%N)
