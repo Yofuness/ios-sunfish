@@ -27,6 +27,8 @@ file names and build are for flame, not sunfish.
   (`sweetuiwdt=30`, default) ends in fastboot when the UI stays frozen.
 
 ## iOS-side escapes
+- Since 2026-11-13 ufsroot1 (userdata from 16 GiB) holds the iOS 27.2.1 root (docs/root27.md), not iOS 16's /var: boot
+  iOS 16 with `sweetnofstab=1`; its /var backup is ../backup/ios16-var-20261113 (+ Lily).
 - /var on ufsroot1 fails to boot: boot with `sweetnofstab=1`, then `toybox unlink /private/etc/fstab`
   ([features/storage.md](features/storage.md)). The old /var is still on the root underneath.
 - launchd jobs dropped with `tools/sunfish-launchd-drop.sh`: the original is `/System/Library/xpc/launchd.plist.pre-drop`,

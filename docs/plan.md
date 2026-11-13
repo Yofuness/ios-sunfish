@@ -60,7 +60,8 @@ investigator; both IPSWs are on disk, sha1 verified; extracted files under ../re
 Claude's (the user, away 2026-11-13). iOS 16 everyday boot: `tools/sunfish-test.sh -k 167 TAG sweetse9=2 sweetcampmic=2
 sweetswapbig=6 sweetampreset=1 sweetpmemwc=2 sweetgpucap=512 sweetgpukill=0`; kernel167, bundle with Turnip 0114/0115 +
 bridge 0137 (gpu15e); mtl2-env SWEET_U0011..14=1, SWEET_SURF_FLUSH=1, SWEET_CULL=3 SWEET_YCBCR_GPU=1 (default again 2026-11-13).
-Never kill mediaserverd/camd in tests (hard reset 2026-11-13 05:10): reboot instead.
+**From 2026-11-13 ~11:30 every iOS 16 boot needs `sweetnofstab=1`**: ufsroot1 holds the 27.2.1 root, iOS 16 has no
+/var. Never kill mediaserverd/camd in tests (hard reset 2026-11-13 05:10): reboot instead.
 
 ## Questions for you (Claude took the recommended path meanwhile)
 - App Store (B56, attestation spoofing) and the PowerLog/CoreDuet deletion: still open, parked with the old plan.
