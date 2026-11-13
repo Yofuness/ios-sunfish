@@ -89,6 +89,20 @@ Switches: VENUSCTL_PRIMARY=1 (linear NV12 on OUTPUT), VENUSCTL_DPB_SETBUF=1, VEN
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
 
+### 2026-11-12 22:22 Video lag behind the page clock: decoder stalls + no frame shedding (read-only analysis of b62a)
+Correction: the two entries above headed 21:40 (gpu.md) and 22:15 were written at about 21:35 and 21:50.
+Page beacons (work/shots/b62/httpd4.log, 720p mp4, dropped=0): the frame counter stalls for ~5 s twice (only 28 frames
+between t=4 and 9 s; 0 frames between t=34 and 39 s) while the media clock runs on (audio track drives it although
+muted); between stalls 175-185 frames per 5 s (~36 fps), so the deficit (up to 5.8 s) drains at ~6 fps (observed).
+HLS: same early stall (frames 55 -> 84 between t=2.7 and 7.7). Our fixed buffering is at most 32 frames (MAX_INFLIGHT,
+vtvenus.c:94), typically ~9 (0.3 s): not the cause. vtvenus keeps VT's PTS (no re-stamping). vtvenus advertises no VT
+QoS property (vtvenus.c:1138-1162), so the player never skips late frames (MediaToolbox only counts them; guess from
+disassembly at a few points). Catch-up ~36-39 fps although venusd alone does 66-76 fps at 1080p: limit outside venusd's
+decode loop (unknown). Stall layer unknown; the early stall happens with no flame-shot running.
+Next: stall detectors (venusd: no FBD > 500 ms; vtvenus: DecodeFrame blocked > 500 ms / no DecodeFrame > 500 ms with
+frames pending) + kVTDecompressionPropertyKey_EnableVideoToolboxQoS (VTVENUS_QOS=0 off), then a 65 s run with a
+1 s-beacon page and requestVideoFrameCallback gap reports, no flame-shots.
+
 ### 2026-11-12 22:15 B62 is very likely a flame-shot capture artefact (Fable forensics on b62a shots); correction to 21:10
 Every 15-row band of the video area in the b62a shots is an exact, undisplaced copy (dx=dy=0, SAD < 3) of ONE real
 clip frame, and that frame rises monotonically top to bottom: mp4-1 419 -> 534, mp4-2 1000 -> 1116, mp4-3 1489 -> 1543,
