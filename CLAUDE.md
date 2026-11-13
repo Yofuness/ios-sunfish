@@ -127,7 +127,7 @@ This file is the one home for the project's rules (AGENTS.md and the memory note
 - **Reuse first** (the user, 2026-11-03): before writing a piece of the Metal/GPU/video stack, check the related
   projects (tools/upstream.list, incl. metal2vulkan upstream, AdrenoMetal, darlinghq indium/darling-metal) for a
   proven implementation and pull it in rather than reinventing it; say in the commit what was reused or why not.
-- **Upstream check** (the user, 2026-10-30): related ports (ios-redfin, iOSPlus10, UniXNU, metal2vulkan, hakios-*, ...)
+- **Upstream check** (the user, 2026-10-30; refocused on the iOS 26/27 direction 2026-11-13: arm64e ports first, discovers new projects daily, watches apple-oss-distributions/xnu for the iOS 27 kernel source): related ports (ios-redfin, iOSPlus10, UniXNU, metal2vulkan, hakios-*, ...)
   are listed in `tools/upstream.list`. A daily scheduled task (06:30, "sunfish-upstream-check") runs
   `tools/sunfish-upstream-check.sh`, surveys the new commits with investigators, checks each candidate against our
   actual code (grep over patch names has been wrong), writes `research/notes/upstream-YYYY-MM-DD.md` and marks them

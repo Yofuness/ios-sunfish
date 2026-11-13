@@ -13,3 +13,11 @@ hakios-xnu     research/upstream/hakios-xnu    https://github.com/oosexgang/haki
 ios-fajita     research/upstream/ios-fajita    https://github.com/edi194/ios-fajita                -           c8076bc
 ios-sweet-build research/upstream/ios-sweet-build https://github.com/frokfrdk/ios-sweet-build      -           81a354b
 AdrenoMetal    research/re/adrenometal         https://github.com/UniXNU/AdrenoMetal                -           73d582f
+# iOS 26/27 direction (2026-11-13): arm64e ports, Apple's xnu source (an iOS 27 / xnu-13 tag is the gate for iOS 27), LibrePods
+IOS-26-Hot     research/upstream/IOS-26-Hot    https://github.com/nithinyadavamaraboina-online/IOS-26-Hot -      d249939
+hakios-arm64e-dada research/upstream/hakios-arm64e-dada https://github.com/superboyyy/hakios-arm64e-dada -    f1ae906
+hakios-arm64e-onyx research/upstream/hakios-arm64e-onyx https://github.com/arbuxiktech/hakios-arm64e-onyx -   0561a98
+UniXNU-zeta    research/upstream/unixnu-zeta   https://github.com/none24smu/UniXNU-zeta            -           eb48928
+UniXNU-none24-ios26 research/upstream/unixnu-none24-ios26 https://github.com/none24smu/UniXNU      ios26       68c5134
+apple-xnu      research/upstream/apple-xnu     https://github.com/apple-oss-distributions/xnu      -           f6217f8
+librepods      research/upstream/librepods     https://github.com/kavishdevar/librepods.git        -           89356c0
