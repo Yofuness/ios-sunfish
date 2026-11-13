@@ -1,0 +1,79 @@
+From 091694f444c589f4bf08a6fe15b4a3f139a94e39 Mon Sep 17 00:00:00 2001
+From: Yofuness <compiledchickennuggets@gmail.com>
+Date: Thu, 12 Nov 2026 22:41:14 -0500
+Subject: [PATCH] sunfish: log the reason for v2 submit BadArgument (G2)
+
+G2 ("submit failed: 0xe00002c2" in backboardd) comes from silent kIOReturnBadArgument returns in
+the v2 path. A new v2_bad_log() names the failing check: V2_IN/V2_OUT log the method and the
+sizes, submit logs buffer_count/reserved at the count check, and at the per-buffer check which
+condition failed (unaligned, zero, over 0xfffff dwords, iova below window, end past window) with
+handle, iova, bytes and the client's window. At most 5 lines per boot per site, then one
+"further ... suppressed" line. Logging only, no behaviour change.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ iokit/Kernel/arm/SweetAccelerator.cpp | 27 +++++++++++++++++++++++++--
+ 1 file changed, 25 insertions(+), 2 deletions(-)
+
+diff --git a/iokit/Kernel/arm/SweetAccelerator.cpp b/iokit/Kernel/arm/SweetAccelerator.cpp
+index 6d5bb39..35da67b 100644
+--- a/iokit/Kernel/arm/SweetAccelerator.cpp
++++ b/iokit/Kernel/arm/SweetAccelerator.cpp
+@@ -801,8 +801,23 @@ SweetAcceleratorUserClient::v2Method(uint32_t method, const void *in, uint32_t i
+ 		if (e_ <= 20 || e_ % 1000 == 0) \
+ 			IOLog("SWEET MTL: v2 %s: %s %s (#%u)\n", fName, what, why, e_); \
+ 	} while (0)
+-#define V2_IN(T)        if (in == NULL || inSize != sizeof(T)) return kIOReturnBadArgument; const T *rq = (const T *)in
+-#define V2_OUT(T)       if (out == NULL || *outSize < sizeof(T)) return kIOReturnBadArgument; T *rp = (T *)out; \
++/* 0284: a BadArgument from a v2 check (G2 "submit failed: 0xe00002c2") names the check; the first 5 per boot
++ * per site, then one "suppressed" line */
++#define v2_bad_log(what, fmt, ...) do { \
++		static uint32_t v2_bad_n; \
++		if (v2_bad_n < 6 && ++v2_bad_n <= 5) \
++			IOLog("SWEET MTL: v2 %s: " what " " fmt "\n", fName, ##__VA_ARGS__); \
++		else if (v2_bad_n == 6 && ++v2_bad_n) \
++			IOLog("SWEET MTL: v2 %s: further " what " lines suppressed\n", fName); \
++	} while (0)
++#define V2_IN(T)        if (in == NULL || inSize != sizeof(T)) { \
++	                v2_bad_log("bad in", "method %u (%s) in %u want %u", method, in == NULL ? "null" : "size", \
++	                    inSize, (uint32_t)sizeof(T)); \
++	                return kIOReturnBadArgument; } const T *rq = (const T *)in
++#define V2_OUT(T)       if (out == NULL || *outSize < sizeof(T)) { \
++	                v2_bad_log("bad out", "method %u (%s) out %u want %u", method, out == NULL ? "null" : "size", \
++	                    *outSize, (uint32_t)sizeof(T)); \
++	                return kIOReturnBadArgument; } T *rp = (T *)out; \
+ 	                bzero(rp, sizeof(T)); *outSize = sizeof(T)
+ 	if (!(logged & (1u << (method & 31)))) {
+ 		logged |= 1u << (method & 31);
+@@ -1028,6 +1043,8 @@ SweetAcceleratorUserClient::v2Method(uint32_t method, const void *in, uint32_t i
+ 		V2_IN(NativeAdrenoAbiSubmit);
+ 		V2_OUT(NativeAdrenoAbiSubmitReply);
+ 		if (rq->buffer_count == 0 || rq->buffer_count > NativeAdrenoAbiMaxBuffers || rq->reserved) {
++			v2_bad_log("submit bad count", "buffer_count %u (max %u) reserved 0x%x", rq->buffer_count,
++			    (uint32_t)NativeAdrenoAbiMaxBuffers, rq->reserved);
+ 			return kIOReturnBadArgument;
+ 		}
+ 		uint64_t iova[NativeAdrenoAbiMaxBuffers];
+@@ -1036,6 +1053,11 @@ SweetAcceleratorUserClient::v2Method(uint32_t method, const void *in, uint32_t i
+ 			const NativeAdrenoAbiSubmitBuffer *b = &rq->buffers[i];
+ 			if ((b->bytes & 3) || b->bytes == 0 || b->bytes / 4 > 0xfffff || b->iova < fWinBase ||
+ 			    b->iova + b->bytes > fWinBase + fWinSize) {
++				const char *why = (b->bytes & 3) ? "bytes not 4-aligned" : b->bytes == 0 ? "bytes zero" :
++				    b->bytes / 4 > 0xfffff ? "over 0xfffff dwords" : b->iova < fWinBase ? "iova below window" :
++				    "end past window";
++				v2_bad_log("submit bad buffer", "%u/%u (%s) handle %llu iova 0x%llx bytes 0x%llx win 0x%llx+0x%llx",
++				    i, rq->buffer_count, why, b->handle, b->iova, b->bytes, fWinBase, fWinSize);
+ 				return kIOReturnBadArgument;
+ 			}
+ 			iova[i] = b->iova;
+@@ -1106,6 +1128,7 @@ SweetAcceleratorUserClient::v2Method(uint32_t method, const void *in, uint32_t i
+ 	default:
+ 		return kIOReturnUnsupported;
+ 	}
++#undef v2_bad_log
+ #undef V2_IN
+ #undef V2_OUT
+ }
+-- 
+2.56.0
+
