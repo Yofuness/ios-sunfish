@@ -1,0 +1,96 @@
+# xnu-12377.121.6 series (iOS 26/27, stage 3)
+
+The first kernel series for the iOS 26/27 port (docs/plan.md stage 3), on xnu-12377.121.6 (the macOS 26.5 / iOS 26
+xnu; iOS 27 runs on it with the Darwin 27 syscalls). Target: **Gate C**, a RAM-booted kernel that reaches launchd on
+the serial console, then SSH over USB-ECM. Plan of the rebase: `research/notes/rebase-map-12377-2026-11-13.md`.
+
+Tree: `work/src/xnu-12377`, branch `sunfish-12377` from tag xnu-12377.121.6 (ac9718f). Its first commit (tag
+`stage12377`) holds what the build does before the series patches (the stage scripts' output and dxb's own
+patches/26.0); one more `stage:` commit holds 0002's header. Every other commit is one file of this directory,
+in file order. As in `work/src/xnu`: commit in the tree, then save the commit as the next file here.
+
+## Numbering (file-name order = apply order)
+
+| range | what | source |
+|---|---|---|
+| `0000`-`0001`, `0019`/`0020`/`0026`/`0058` `*.sh` | stage scripts: CoreEntitlements V2 headers without a KDK + firehose stub, dxb's TrustCache headers, libpthread-539.100.4, BearSSL 7bea48e, hfs-715.120.4, IOHIDFamily-2238.120.5 (fetched at build time by pinned commit; `XNU_LOCAL_DEPS_DIR` uses local clones) | IOS-26-Hot, unchanged |
+| `0002-stage-firehose-compat-header.sh` | ours: the firehose stub IOS-26-Hot's CI got from dxb bd88697, which 0134 patches (see below) | ours |
+| `0003`-`0124` (116 patches) | ios-sweet + flame, ported to 12377 by the ios-sweet author; numbers and names as in IOS-26-Hot | IOS-26-Hot, byte-identical |
+| `0125`, `0126` | the two sunfish edits our copies of 0086/0089 carry and Hot's lack: cpufreq cluster table A55 x6 / A76 x2, `SWEET_MIRROR_PA 0x1fa000000` (6 GB) | ours |
+| `0129`-`0141` (12 patches) | IOS-26-Hot's iOS 26 generic layer: arm64e exec + shared region, sleh PAC/ISA emulator, build fixes, diagnostics entitlements, fuse query, firehose config, kmem RNG guard, SMP/QEMU guards, sandbox outputs + exit log, pmem MPSS wcomb, IPC service-port nofilter, IOMFB swap layout | IOS-26-Hot, byte-identical, Hot's numbers |
+| `0199` | Darwin 27 syscall slots (pipe2, dup3, fchflagsat, getumask, aio_readv/writev, ...) | UniXNU `patches/xnu-12377/darwin26-syscalls.patch`, unchanged (header added) |
+| `1NNN` | our `xnu/patches/0NNN-*` re-applied on this stack, number + 1000 (0151 -> 1151); exported from the tree with `git format-patch` (fuzzed ones refreshed) | ours |
+
+`SWEET.h`'s `BTI_ENFORCED 0` is already in Hot's 0004 (our iOS 16 copy lacks it), so no patch for it.
+
+## Sources and licences
+
+- **IOS-26-Hot** `xnu/patches-26`: MIT (`LICENSE`: "Copyright (c) 2026 dipa-studio"), clone in
+  `research/upstream/IOS-26-Hot` (remote github.com/nithinyadavamaraboina-online/IOS-26-Hot), commit
+  **d249939b9c36380afaee1a76cf167aeee8347475** (2026-11-01). Built there by `.github/workflows/xnu.yml` with
+  darwin-xnu-build bd88697, MACOS_VERSION 26.5.
+- **UniXNU**: BSD-2-Clause-Patent (`LICENSE`), clone in `research/upstream/unixnu-main` (github.com/UniXNU/UniXNU),
+  HEAD **7d85ede80092050f4d87f72ac7229bb605ce07fb**; the patch file last changed in 4b8d85d.
+- **dxb 0002 stub**: blacktop/darwin-xnu-build bd88697 `patches/26.0/00_setup_coreentitlements.sh` (MIT), verbatim.
+- Everything else: ours (this repo).
+
+## IOS-26-Hot patches not taken
+
+- 0125-0128: RMX1931 (Realme) board, touch, GPU zap region, Metal clocks: another phone.
+- 0138 `ios26-pac-fastpath-overlay-thermal-touch`: 42 files mixed with RMX1931 drivers; its generic part (locore.s PAC
+  fast path, sleh.c, debug.c, pe_serial.c) gets cut out later (map s5; 0130's emulator is enough to start).
+- 0142 `ios26-iosurface-abi`: does not apply here: its SweetSurface.cpp hunks sit on 0138's (kSweetSurfaceSetYCbCrMatrix,
+  bulk attachments). Needed for Gate D, not C; merge with 0138's surface part (and our 0235/0251/0252) then.
+- 0143-0151: Hot's flame perf, Wi-Fi ABI (0145), keystore + app inject (0148), rebrand: Gate D+ items.
+
+## Our 0125-0285: what is in, what is not
+
+In (16): 0125 (touch panel 2340 + sunfish early-fb/A6 FB address; added beyond the Gate C list because the early
+framebuffer PA/height in SWEET.h live there), 0127, 0151, 0175 (fuzz), 0176, 0184, 0185, 0186 (fuzz), 0187, 0191, 0192,
+0198, 0244, 0246, 0279, 0281 (fuzz). The fuzzed hunks were read: each lands in the intended spot.
+
+Tried and left out (they sit on patches not in this series):
+- 0189 boot watchdog: SweetPlatformExpert.cpp/SweetFramebuffer.cpp; built on 0179's UI watchdog (`flame_wdt_stop`,
+  swap time), fuzz 3 put its declarations inside a function. 0269 wdt crumb: on 0189.
+- 0206 recovery crumbs, 0207 recovery TLB wait: sweet_a6xx.c/sweet_gpu.c, need the A618 GPU chain (0129-0174).
+- 0280 SPMI write retry: sweet_keys.c/sweet_spmi.c, needs 0126 (vol-up on PM6150L) / 0242.
+
+Not attempted yet (the map, pass 3 on the Hot base without Hot's iOS 26 layer: 143 clean / 6 fuzz / 11 conflict of
+our 160, 0160 skipped). Since Hot 0137 (sweet_ufs/sweet_amfi) and 0139 (sweet_pmem) now come first, re-check our
+pmem (0232/0233/0277/0278) and AMFI (0194, 0219, 0240) patches against them:
+- cpufreq chain (conflict): 0255, 0256, 0257, 0258, 0260, 0261, 0265, 0276 (sched_prim.c sits where 12377 has
+  CONFIG_SCHED_SMT; 0255 adds sweet_thermal.c). Boots run at bootloader clocks without it.
+- HID/motion (Hot's 0058 stages IOHIDFamily-2238 and rewrote SweetHID.cpp): 0228, 0243, 0245 conflict; 0230, 0241
+  fuzz.
+- Hot-merge items: 0235/0251/0252 vs Hot 0142 (SweetSurface.cpp), 0188/0193/0199 vs Hot 0145 (redwood_apple80211.c),
+  0240 vs Hot 0148 (kern_exec.c); 0238, 0240 fuzz.
+- iOS 16-only (by subject; apply clean, keep switched off): 0154/0155/0196 census, 0162 charger dump, 0171/0266/0268
+  gpucc/cx snapshots, 0177/0180 stall injection, 0211 camprobe, 0220-0222 MDP dumps.
+- 0160: never (149,079 lines of 8796's iokit); its 11 real lines (IOMFB async log in SweetFramebuffer.cpp) by hand.
+- The rest (GPU A618 0129-0174, display, touch 0126+, battery, Wi-Fi, BT 0226, audio, camera, video): clean on the
+  map's stack, for after Gate C.
+
+## Build
+
+```
+VM_DIR=~/VMs/macos15 MACOS_VERSION=26.5 XC=/Applications/Xcode_26.1.app PATCH_DIR=xnu/patches-12377 KDK_MODE=fake tools/vm-build-xnu.sh NN
+```
+
+What the build does (dxb 6639065, `patches()`): copies every file here as `patches/26.0/sweet-<name>`, deletes dxb's
+`00_setup_coreentitlements.sh` (needs a KDK) and points KDKROOT at an empty `~/xnubuild/no-kdk`; runs all `*.sh` from
+the xnu root in name order (0000 also writes its CoreEntitlements V2 headers into no-kdk, as Hot's CI fills its
+fake-kdk), then dxb's 26.0 patches (link_kdk and remove_applefeatures_include do not apply on 12377 and are skipped,
+as in Hot's CI), then ours, which must all apply (a sweet-* patch that fails `git apply --check` stops the build).
+The stage scripts fetch their sources from GitHub and bearssl.org on each full or re-patch run.
+
+Checked 2026-11-13 (no build): the whole series applies from scratch on ac9718f in that order (153 patches: 6 dxb +
+147 ours; the result's tree hash equals `sunfish-12377` HEAD), no new whitespace errors in our patches.
+
+Differences from Hot's CI kept on purpose: dxb 6639065 instead of bd88697 (it adds `define_esr_ec_pac_fail_unconditionally`
+and `guard_sptm_user_pointer_ops_with_pac`, both apply under the series), Xcode 26.1 instead of runner's Xcode 26.x.
+
+## First boot
+
+1244's compiled-in defaults are the iOS 16 ones (`sweetgpu=1 sweetmtl=2 sweettouch=2 ...`); this series has Hot's
+SM8150/A640 GPU code without our A618 chain, so boot with `sweetgpu=0 sweetmtl=0` (or `sweetnodefaults=1` and a
+full line) until the GPU patches are in.

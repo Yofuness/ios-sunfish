@@ -17,6 +17,20 @@ stage 0 (iOS 16 btsnoop) next. **Updated:** 2026-11-13.
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 08:50 xnu/patches-12377: first Gate C series assembled (implementer; not built yet)
+- work/src/xnu-12377 branch sunfish-12377 HEAD 36b58f5 (148 commits above tag stage12377 = stage-script output + dxb 26.0
+  patches). Exported: 7 stage scripts (Hot 0000/0001/0019/0020/0026/0058 + our 0002 firehose compat header = dxb bd88697's
+  stub, so Hot 0134 applies on our dxb 6639065), Hot 0003-0124 (116, byte-identical; IOS-26-Hot d249939, MIT), 0125/0126
+  (our cluster table + mirror PA lines from 0086/0089), Hot 0129-0137 + 0139-0141 (12), 0199 UniXNU darwin27 syscalls
+  (7d85ede, BSD-2-Clause-Patent), ours renumbered +1000: 1125 1127 1151 1175 1176 1184-1187 1191 1192 1198 1244 1246
+  1279 1281 (fuzz re-exported: 1175 1186 1281). Out: Hot 0142 (built on 0138; Gate D), ours 0189/0269 (need 0179 WDT),
+  0206/0207 (A618 GPU chain), 0280 (needs 0126/0242). BTI_ENFORCED 0 is already in Hot's 0004.
+- Fresh apply in dxb order (stage scripts run, KDK_MODE=fake layout): 153 applied (6 dxb + 147 ours), tree hash = HEAD.
+- vm-build-xnu.sh (15.x/26.x only): a failing sweet-* patch now stops the build (dxb skips silently; Hot's CI is
+  fail-fast); the Sonoma path is unchanged.
+- First boots will need `sweetgpu=0 sweetmtl=0` (1244's iOS 16 defaults turn the GPU on). Untested: compile with Xcode 26.1,
+  kmutil build_kc on an empty no-kdk, network for the stage scripts in the VM.
+
 ### 2026-11-13 08:20 Stage 3 rebase map (one Fable investigator, read-only; research/notes/rebase-map-12377-2026-11-13.md)
 - Base CHANGED (OBS): IOS-26-Hot `xnu/patches-26` (dipa-studio, MIT; the ios-sweet author's own port of the whole sweet +
   flame 0003-0124 to xnu-12377.121.6, MACOS_VERSION 26.5) applies 116/116 clean on 12377 (+ its stage scripts 0000

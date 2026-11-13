@@ -1,0 +1,27 @@
+From fa6fa76d8cc3f5f9fe7b8e48d56c73abfa2fa84f Mon Sep 17 00:00:00 2001
+From: Yofuness <compiledchickennuggets@gmail.com>
+Date: Fri, 13 Nov 2026 07:43:12 -0500
+Subject: [PATCH] 0126 sunfish: SWEET_MIRROR_PA 0x1fa000000 (6 GB RAM)
+
+IOS-26-Hot's 0089 keeps flame's 0x1fe000000 for the uncached log mirror; sunfish uses
+0x1fa000000 as in our xnu/patches/0089-flame-tools-usb.patch (same line, no comment).
+---
+ bsd/dev/sweet_ufs.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/bsd/dev/sweet_ufs.c b/bsd/dev/sweet_ufs.c
+index 99a9c87..50acc55 100644
+--- a/bsd/dev/sweet_ufs.c
++++ b/bsd/dev/sweet_ufs.c
+@@ -705,7 +705,7 @@ static uint32_t sweet_log_secs = SWEET_LOG_SECS;
+  *   +0x1000 ring bytes (offset of byte n = n % ring size)
+  * The next shim boot copies its tail to UFS (tools/flame-log-pull.sh rescue).
+  */
+-#define SWEET_MIRROR_PA         0x1fe000000ULL
++#define SWEET_MIRROR_PA         0x1fa000000ULL
+ struct sweet_mirror_header {
+ 	char magic[8];
+ 	uint64_t total;
+-- 
+2.56.0
+

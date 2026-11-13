@@ -94,6 +94,13 @@ if [ "$KDK_MODE" = fake ]; then
   rm -f "$PSUB/00_setup_coreentitlements.sh"
   mkdir -p ~/xnubuild/no-kdk; export KDKROOT=~/xnubuild/no-kdk
 fi
+# 15.x/26.x: our sweet-* patches must all apply (IOS-26-Hot's CI applies its series fail-fast); dxb's patches loop
+# skips any patch whose --check fails, which would hide a broken series. dxb's own patches may still be skipped
+# (link_kdk and remove_applefeatures_include do not apply on 12377). The Sonoma path is unchanged.
+if [ -n "$PPRE" ]; then
+  perl -pi -e 's/^(\s+)(warning "Skipping patch \$\{PATCH\})/$1case "\$(basename "\$PATCH")" in sweet-*) error "sweet patch does not apply: \$\{PATCH\}: \$\{APPLY_CHECK\}"; exit 1;; esac\n$1$2/' build.sh
+  grep -q 'sweet patch does not apply' build.sh
+fi
 perl -pi -e 's/ARCHS="x86_64 arm64e" VALID_ARCHS="x86_64 arm64e"/ARCHS="x86_64 arm64e arm64" VALID_ARCHS="x86_64 arm64e arm64"/' build.sh
 grep -q 'VALID_ARCHS="x86_64 arm64e arm64"' build.sh
 # build.sh hardcodes make -j8 (= the VM vCPUs); VM_JOBS=N lowers it if 8 GB swaps
@@ -104,6 +111,7 @@ elif [ $MODE = append ]; then
   echo "patches appended: applying only the new ones to dxb/xnu"
   (cd xnu && printf '%s\n' "$NEWSUMS" | tail -n +"$(( $(printf '%s\n' "$OLDSUMS" | wc -l) + 1 ))" | while read -r f h; do
     case $f in *.patch) ;; *) echo "new script $f: not supported on the append path" >&2; exit 1;; esac
+    [ -n "$PPRE" ] && ! git apply --check ~/xnubuild/patches-in/"$f" && { echo "  $f does not apply" >&2; exit 1; }
     git apply --check ~/xnubuild/patches-in/"$f" && git apply ~/xnubuild/patches-in/"$f" && echo "  applied $f"
   done)
 elif [ $MODE = repatch ]; then
