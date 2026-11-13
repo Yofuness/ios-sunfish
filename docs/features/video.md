@@ -89,6 +89,20 @@ Switches: VENUSCTL_PRIMARY=1 (linear NV12 on OUTPUT), VENUSCTL_DPB_SETBUF=1, VEN
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
 
+### 2026-11-13 00:05 4d plan: in-place YCbCr sampling spec; correction to the 0131 result
+Read-only workflow, spec in research/notes/ycbcr-inplace-spec-2026-11-12.md. CoreAnimation asks for ONE texture per
+decoder surface, format 500 (YCBCR8_420_2P) over plane 0 with ShaderRead only, and relies on the sampler returning RGB
+(observed in logs: "fmt 500 ... usage 1 ... surface 420v"). Today's CPU path converts with vImage in every setTexture
+whose surface seed moved (~45 % backboardd). Upstream metal2vulkan cdf59197c (+843d22b0f, 8 fetches) samples the planes
+in place through an R8G8_UINT texel buffer + SPIR-V math; AdrenoMetal 7841a9f/0035 adds a lazy image on top (MIT).
+VkSamplerYcbcrConversion is refused for imported memory upstream, so it is not our route. Port: git apply fails in 24
+of 36 files (our base 720ef1ce is 3385 commits behind); estimate ~20 h for the core, not 6-10 h.
+Correction to the 2026-11-03 0131 entries: boot 20261103-190010 (529-568 s) shows the GPU SATURATED, not a stall:
+GPU busy 96-100 %, mean 70.8 ms per submit, "ycbcr converted" 58-69 per 5 s, FB 12.2-14.4 fps (observed). One 1080p
+conversion cost ~64-72 ms of GPU time even without the staging copy, so reading the imported surface pages (or linear
+memory) may be the cost (guess); in-place sampling would inherit it. So first S0b: measure in m2vtest an imported
+texel-buffer read vs a pool-memory read of 3.1 MB. S0a (CPU-path picture = ffmpeg) is met: b62 atomic shots 1.22.
+
 ### 2026-11-12 23:05 B62 closed: atomic flame-shots match ffmpeg (t165a); no lag without flame-shots
 kernel165 (162 + xnu 0281/0282/0283), bundle 3f069d6, venusd/vtvenus 6a24d64, everyday args. h264-720p.mp4 in Safari:
 two flame-shots with 0283's atomic read: counter 380 and 1174, whole video area = ffmpeg's frame at the counter, mean
