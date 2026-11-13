@@ -41,6 +41,6 @@ Steps (log in `../restore/root27/build-PROFILE.log`):
    and `tools/root27/simg-offset.py --offset 16G` -> `root27-PROFILE-at16g.simg`.
 
 ## Writing it (destructive, needs the user's OK first; not done by the script)
-`fastboot -S 512M flash userdata ../restore/root27/root27-c1-at16g.simg` writes the image at userdata byte 16 GiB, the start
+`fastboot -S 256M flash userdata ../restore/root27/root27-c1-at16g.simg` writes the image at userdata byte 16 GiB, the start
 of /dev/ufsroot1 (iOS 16's /var region, 1185): the first 16 GiB (iOS 16's root) are DONT_CARE. Back up /var/local first.
 Boot with kernel302+ and `rd=ufsroot1` (1290); iOS 16 then needs `sweetnofstab=1`. See the pipeline note, section 5.
