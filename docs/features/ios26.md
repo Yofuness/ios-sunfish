@@ -1,8 +1,8 @@
 # iOS 26 / 27 port (arm64e userland on a non-PAC SM7150)
 
 **State:** 🔬 Gate A passed for both roots (2026-11-13); root = iOS 27.2.1 (24B156; its dyld proves with 3 prover fixes). Kernel series
-**Gate B passed**: kernel301 (xnu-12377.121.6 + xnu/patches-12377, 147 patches) builds in the Sequoia VM (Xcode 26.1);
-not booted yet. Stage 0 btsnoop done. **Updated:** 2026-11-13.
+**Gate B passed**; kernel301 (xnu-12377.121.6 + xnu/patches-12377) BOOTS on the phone with the --xnu12377 ADT: 8/8
+CPUs, UFS, HFS root mounted read-only, launchd exec'd (k301b); iOS 16's launchd then dies on a port guard (expected). Stage 0 btsnoop done. **Updated:** 2026-11-13.
 
 ## Facts
 - Goal (the user, 2026-11-13): LibrePods development needs a current iOS host; target iOS 27, iOS 26 first if better.
@@ -17,6 +17,22 @@ not booted yet. Stage 0 btsnoop done. **Updated:** 2026-11-13.
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 10:20 k301b: KERNEL301 BOOTS to launchd (sunfish-26.adt, iOS 16 root read-only)
+- `SUNFISH_LLVM_NM=1 ADT=work/boot/sunfish-26.adt tools/sunfish-boot.sh k301b work/kernel301/kernel.development.sweet
+  sweetfb_noconsole=0 -v sweetgpu=0 sweetmtl=0 ufsrw=0 rootrw=0`; battery 4456 mV. The 256-byte seed fixed k301a's silent
+  death (OBS: arm_vm_init passed).
+- Shim RAM log (rescued after the next boot from /dev/rufsroot0 at the sunfish-test.sh rescue offset; copy in
+  ../logs/k301/k301b-rescue.txt, out of git), kernel clock: 26.387 banner; 26.55-26.58 AMFI/Sandbox stand-ins, AKS, WDT,
+  SURF, HID; 26.579-26.594 8/8 CPUs up, SGI1 verified; fb 1080x2340 @0x9c000000; PM8150 RTC; battery 4456 mV; 26.632 UFS
+  LUN 0 read-only; 26.643 BSD root ufsroot0; journal replay refused on the ro device (non-fatal); 26.654 hfs mounted
+  iOSRoot; "root volume is not authenticated (error 25); continuing unsealed"; 26.658-26.666 exec /sbin/launchd
+  (launchd.development tried first); libignition; launchd syscalls; 27.19 USB-ECM frames; "trust caches unavailable".
+- 27.535 panic: `initproc exited -- exit reason namespace 23 subcode 0x2000004300800407` (OS_REASON_GUARD; GUESS: Mach
+  port guard, kGUARD_EXC_DESCRIPTOR_VIOLATION, port 0x407): iOS 16 launchd on a 26 kernel, expected. Panel showed the
+  panic dump from ~15 s; shim watchdog reset to fastboot between 60 and 90 s. No USB log lines before the panic.
+- iOS 16 kernel167 back at the lock screen (k167back2, 4435 mV).
+- Next: the 27.2.1 root (stage 4): full-cache prover, rewrite, image, boot it (imageboot from a file vs a region).
+
 ### 2026-11-13 10:05 ADT for xnu-12377 (sunfish-26.adt)
 - Experiment E1 of research/notes/k301-noboot-2026-11-13.md, host only. `tools/mkadt.py --xnu12377` (implies --highmem)
   -> work/boot/sunfish-26.adt (13772 B): /chosen random-seed 256 B (was 64; 12377 panics in arm_vm_init below 256),
