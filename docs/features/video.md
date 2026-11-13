@@ -89,6 +89,21 @@ Switches: VENUSCTL_PRIMARY=1 (linear NV12 on OUTPUT), VENUSCTL_DPB_SETBUF=1, VEN
 ## Log
 (Newest first, append-only. When this Log passes about 150 lines, move its oldest entries to the archive.)
 
+### 2026-11-13 05:20 4 video tabs: GPU path costs backboardd ~240 MB more GPU memory (gpu15c); hard reset at cleanup
+t167z (kernel167, bundle with the first 0114). Same sequence per leg: 4 tabs lat.html?loop=1 (h264-1080p, hevc-1080p,
+h264-720p, hevc-720p) 10 s apart, the last plays 60 s, 0 tabs before each leg. Observed ("SWEET MTL: v2 NAME holds N MB"):
+| leg | pool peak MB / 940 | backboardd / WebKit.GPU MB | OOM refused lines | crash | video after 60 s |
+| CPU path run 1 | 752 | 452 / 163 | 0 | no | plays |
+| CPU path run 2 | 756 | 421 / 164 | 0 | no | plays |
+| GPU path | 782 | 675 / 157 | 14 | WebKit.GPU SIGSEGV far 0x1b20 (0114 bug, gpu-bugs 05:10) | plays after relaunch |
+So the crash itself is 0114's (fixed in 1d7338e, built, not installed), but the pool exhaustion is GPU-path specific:
+backboardd holds ~240 MB more (guess: per-video conversion targets, ~60 MB per playing video; not checked). Default kept
+(single video clean; with the 0114 fix an OOM should give refused draws, not a crash: to verify); B65 to cut it.
+HARD RESET (observed): at ~[2309] (../logs/usb-live.log) during cleanup (mtl2-env restored, then WebKit, MobileSafari,
+mediaserverd and backboardd killed) the log stops at "exec camclk/camid", PON "hard_reset|smpl"; phone in fastboot,
+4434 mV. Same kill sequence passed twice earlier in the run. Guess: the mediaserverd restart's camclk/camid execs (the
+2026-11-03 rule "reboot rather than restart mediaserverd"). Smaller step: never kill mediaserverd in tests; reboot.
+
 ### 2026-11-13 05:00 SWEET_YCBCR_GPU=1 is the default now (tools/sunfish-install-speed.sh; off: delete the line)
 Camera A/B (t167z, kernel167, bundle with Turnip 0114, boot 20261113-043007, rear Photo, dark room so both previews
 black): GPU path mediaserverd 601 %, camd 19 %, backboardd 10 %, GPU 6-8 %, mediaserverd footprint 134 MB, no kill
