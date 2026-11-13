@@ -66,6 +66,7 @@ New patches (1290+):
   `sweet-ux:` (exception, code, subcode, signal, pc, lr) in handle_ux_exception; first 64 each (k309a: mount SIGBUS unexplained).
 - `1300` `sweetsrnest=0` (default 1 = as before): the shared region enters each task without pmap nesting; A/B for
   k310a (mount sees foreign data in a shared-region __DATA page; research/notes/mount27-sigbus-2026-11-13.md, H1).
+- `1301` with `sweetsrnest=0`, skip pmap_trim of the shared region (k311a: "pmap_trim_internal: grand range not in nested region").
 - No patch needed for iOS 27's CPU-feature checks: DIT, SB, SHA512, SHA3, JSCVT, FCMA commpage bits and their
   hw.optional.arm.FEAT_* sysctls come from the ID registers of the boot CPU (an A55) in osfmk/arm/commpage/commpage.c;
   A55/A76 lack all six (GUESS from the Arm TRM values; check `sysctl hw.optional` on the first 12377 boot); commpage 0x10c is zeroed and unwritten; the user timebase type is USER_TIMEBASE_SPEC (CNTVCT, not

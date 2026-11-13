@@ -1,0 +1,26 @@
+From f1ee98b907428067bddad07bf6802b3c3182147d Mon Sep 17 00:00:00 2001
+From: Yofuness <compiledchickennuggets@gmail.com>
+Date: Fri, 13 Nov 2026 13:47:41 -0500
+Subject: [PATCH] sunfish: no pmap_trim of the shared region when sweetsrnest=0
+ (1301)
+
+---
+ osfmk/vm/vm_shared_region.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/osfmk/vm/vm_shared_region.c b/osfmk/vm/vm_shared_region.c
+index 4ab7380..d741969 100644
+--- a/osfmk/vm/vm_shared_region.c
++++ b/osfmk/vm/vm_shared_region.c
+@@ -2116,7 +2116,7 @@ done:
+ 	 * Trim our pmaps to only cover this range (if applicable to
+ 	 * this platform).
+ 	 */
+-	if (kr == KERN_SUCCESS) {
++	if (kr == KERN_SUCCESS && sweet_srnest != 0) {  /* 1301: nothing nested to trim with sweetsrnest=0 (k311a panic) */
+ 		pmap_trim(shared_region->sr_config_map->pmap, sr_map->pmap, sfm_min_address, sfm_max_address - sfm_min_address);
+ 	}
+ #endif
+-- 
+2.56.0
+

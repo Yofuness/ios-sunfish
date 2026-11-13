@@ -18,6 +18,11 @@ execs mount (pid 2), which dies with SIGBUS. MTE instructions are emulated (1294
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 15:20 k311a: sweetsrnest=0 panics in pmap_trim (nothing nested); 1301 skips the trim
+- kernel311 (1300) + `sweetsrnest=0`. OBS (../logs/k311/k311a-rescue.txt): launchd mapped the 80 cache files, then
+  `panic: pmap_trim_internal: grand range not in nested region, vstart=0x199708000, size=0x187948000, state=0 @pmap.c:9342`
+  (vm_shared_region.c:2120 trims the config map's pmap unconditionally). 1301 skips the trim when sweetsrnest=0. kernel312.
+
 ### 2026-11-13 15:00 mount's ASCII pointer: kernel shared-region view (Fable; research/notes/mount27-sigbus-2026-11-13.md)
 - OBS: x9 = dyld's `___syscall_logger` (cache .25.dylddata `__DATA` page 0, unslid 0x1eaf71ca8), loaded at 0x180491584; zero on
   disk and in root27-c1.img (dylddata not rewritten, cmp identical); launchd's cache dyld reads the same page as zero, mount
