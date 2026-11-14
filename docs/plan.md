@@ -61,6 +61,9 @@ ufsrw=1 rootrw=1 launchd_unsecure_cache=1 ignition_level=1 cs_integrity_skip=1 s
    dropped *.car (UIKit artwork); backboardd already opens AppleCLCD, falls back after 30 s without an accelerator and
    swaps; IOMFB 27 swap record (0x6e0) already parsed by Hot 0141. Now: root profile "d" (keeps *.car, PosterBoard), boot
    kernel317 with sweetfb_noconsole=2: pass = lock screen on the webcam. Then touch; GPU later. Keep D22AP identity.
+   k317d (19:20, root d on ufsroot1 now): SpringBoard stays up after ~7 min (19 restarts first), backboardd swaps 0.4 fps
+   but copies ~nothing, console still on the panel. Next: SpringBoard's restart reason (crash reports over SSH), console
+   off on the 12377 fb path, swap surface contents.
 4. Cleanup: the debug patches 1293/1298/1299/1302/1303 stay (off switches); MTE emulation stays as a net.
 
 ## Phone

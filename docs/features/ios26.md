@@ -18,6 +18,18 @@ Bluetooth on 27 pairs (btctl + laptop, A2DP/AVRCP/HFP up, 18:35); next: AirPods 
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 19:20 k317d: root profile d: SpringBoard settles after ~7 min; no picture yet
+- Root d written (fastboot -S 256M, 73 chunks, 195 s); kernel317 + sweetfb_noconsole=2 sweetgpu=0 sweetmtl=0. OBS
+  (../logs/boots/20261113-190743.log): SpringBoard exec'd 19x (restart every ~5 s 237-340 s, no CRASH/reason line), last
+  exec 423.5 s then stays up; PosterBoard, CommCenter, backboardd running (ps over SSH). backboardd: AppleCLCD 1080x2340
+  stride 4320 @0x9c000000 "presented as 1125x2436", IOAcceleratorES 0 found, "display on" 390.7 s, then steady "5s: 2 swaps
+  (0.4 fps), 1 panel copies, avg copy 1 us" (a 1 us copy = almost nothing copied: GUESS empty/zero-size surfaces or the
+  CPU renderer not drawing). The panel showed only the -v text console (sweetfb_noconsole=2 not honoured by this kernel's
+  sweet fb path; console froze from ~240 s). Crashes: cryptexd + terminusd sig 5 every ~60 s. No panic; SSH up throughout.
+- Next (fresh session): why SpringBoard restarted 19x (its stderr/os_log; no `log` binary: install one or read crash
+  reports in /var/mobile/Library/Logs/CrashReporter over SSH), console suppression on the 12377 sweet fb, what the swaps
+  carry (surface size/format per SWEET FB swap), Hot 0142 IOSurface sels if refusals show up.
+
 ### 2026-11-13 19:05 Root profile d (Gate D) built: c1 + asset catalogs, apps, PosterBoard; btsnoop on (not booted)
 - Why (OBS, k317b): SpringBoard aborted on c1 because C1_EXCLUDES had `*.car` (UIKitCore Artwork.bundle/Assets.car,
   3,427,096 B, missing); launchd also missed /Applications/PosterBoard.app.
