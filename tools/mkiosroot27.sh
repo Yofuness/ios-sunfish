@@ -1,21 +1,22 @@
 #!/bin/bash
 # Build the iOS 27.2.1 (24B156, iPhone12,1) HFSX root image for kernel301+ (stage 4, docs/root27.md).
 #
-#   mkiosroot27.sh [--profile full|c1] [--size SIZE] [--steps extract,image,rewrite,tweaks,finish] [--jobs N]
+#   mkiosroot27.sh [--profile full|c1|d] [--size SIZE] [--steps extract,image,rewrite,tweaks,finish] [--jobs N]
 #                  [--force] [--keep-staging] [--keep-panic-on-crash] [--page-shift 12] [--simg-zero-skip]
 #
 # Steps (each one can be run alone; "image" refuses to overwrite an image unless --force):
 #   extract  the OS, SystemOS and AppOS dmgs from the IPSW (ipsw; AEA keys from Apple's server, or the
 #            saved .pem/.key beside them) and the Firmware/*.trustcache files -> ../restore/ipsw/x/24B156/root-src
 #   image    sparse image, mkfs.hfsplus -s -J, rsync -aH the OS root + cryptexes (the c1 profile leaves out apps
-#            and big assets, see C1_EXCLUDES), cryptex layout, first-boot dirs, launchd.plist _PanicOnCrash off
+#            and big assets, see C1_EXCLUDES; d, for Gate D, keeps apps, *.car, localizations and posters and
+#            leaves out only D_EXCLUDES), cryptex layout, first-boot dirs, launchd.plist _PanicOnCrash off
 #   rewrite  PAC lowering inside the image: the dyld cache (zeta rewrite-zeta-dyld-cache.py with the proof in
 #            ../restore/ipsw/x/24B156/prove) and every thin arm64e Mach-O (tools/root27/rewrite-zeta-userland-tree.py),
 #            both re-signed ad hoc; written back in place (tools/root27/apply-rewrites.py)
 #   tweaks   SSH for Gate C2 (tools/root27/tweaks27.py): dropbear + dash + toybox in /var/local/bin, /bin/sh,
 #            authorized_keys (work/userland/ssh/*.pub), the org.iosonpixel.dropbear job in launchd.plist;
 #            Bluetooth (stage 6): btbridge + bluetool-stub, BT firmware, BlueTool/bluetoothd job edits, btbridge job
-#            (off: TWEAKS_ARGS=--no-bt); Wi-Fi: wland + netsvc, modem firmware + rmtfs, wland job (--no-wifi); leave it out of --steps to skip, `tweaks27.py --remove` takes it out again
+#            (off: TWEAKS_ARGS=--no-bt; profile d adds --snoop: btsnoop capture on); Wi-Fi: wland + netsvc, modem firmware + rmtfs, wland job (--no-wifi); leave it out of --steps to skip, `tweaks27.py --remove` takes it out again
 #   finish   fsck.hfsplus, then tools/root27/simg-hfs.py -> root27-PROFILE-at16g.simg: every HFS-allocated block
 #            written (zero pages too), free space DONT_CARE, 16 GiB DONT_CARE in front (userdata offset 16 GiB);
 #            --simg-zero-skip = the old img2simg -s + simg-offset.py (skips zero pages inside files: stale data)
@@ -50,13 +51,14 @@ while [[ $# -gt 0 ]]; do
 	--keep-panic-on-crash) panic_off=0 ;;
 	--page-shift) page_shift=$2; shift ;;
 	--simg-zero-skip) zero_skip=1 ;;
-	*) sed -n '2,26p' "$0"; exit 2 ;;
+	*) sed -n '2,25p' "$0"; exit 2 ;;
 	esac
 	shift
 done
 case $profile in
 full) size=${size:-28G} ;;
 c1) size=${size:-13G} ;;      # ~11 GB of content (5.8 GB dyld cache)
+d) size=${size:-20G} ;;       # ~17.5 GB of content (full is ~20.5 GB)
 *) echo "unknown profile $profile" >&2; exit 2 ;;
 esac
 
@@ -78,9 +80,24 @@ C1_EXCLUDES=(
 	'/System/Library/PreferenceBundles/*' '/System/Library/Snippets/*'
 	'*.loctable' '*.mov' '*.weights' '*.hwx' '*.car' '*.metallib'
 )
-for f in CoreEmoji MediaAnalysis SFSymbols NanoUniverse CVNLP VoiceServices TextToSpeechMauiSupport iWorkImport GESS \
-	TextRecognition HomeUI VisionCore CoreSceneUnderstanding AvatarKit SiriSetup CoreHandwriting; do
+C1_FRAMEWORKS=(CoreEmoji MediaAnalysis SFSymbols NanoUniverse CVNLP VoiceServices TextToSpeechMauiSupport iWorkImport GESS \
+	TextRecognition HomeUI VisionCore CoreSceneUnderstanding AvatarKit SiriSetup CoreHandwriting)
+for f in "${C1_FRAMEWORKS[@]}"; do
 	C1_EXCLUDES+=("/System/Library/PrivateFrameworks/$f.framework/*")
+done
+# D (Gate D, SpringBoard Home): C1 left out UIKitCore's Artwork.bundle/Assets.car ("The UIKit artwork manager should
+# never be nil", SpringBoard abort k317b) and /Applications/PosterBoard.app. D keeps every app, asset catalog,
+# localization, movie, metallib, ML model, poster and preference bundle; it leaves out only what SpringBoard, backboardd
+# and PosterBoard cannot reach: baseband/firmware payloads, Watch (Nano*), Health, Siri/TTS voices, Photos/Live Text/
+# handwriting analysis, avatars, iWork import, the camera's imaging networks, plus the cache's .symbols (~3.4 GB).
+D_EXCLUDES=(
+	'/usr/standalone/*' '/System/Library/NanoTimeKit/*' '/System/Library/NanoPreferenceBundles/*'
+	'/System/Library/Health/*' '/System/Library/Assistant/*' '/System/Library/Snippets/*'
+	'/System/Library/ImagingNetworks/*'
+)
+for f in NanoUniverse AvatarKit SiriSetup iWorkImport TextToSpeechMauiSupport VoiceServices MediaAnalysis CVNLP \
+	TextRecognition CoreHandwriting; do
+	D_EXCLUDES+=("/System/Library/PrivateFrameworks/$f.framework/*")
 done
 
 t0=$SECONDS
@@ -151,7 +168,7 @@ if has_step image; then
 	# A new image needs a new rewrite: drop the old reports and originals.
 	sudo rm -rf "$reports" "$work/orig-$profile" "$staging"
 	mkdir -p "$reports"
-	need_disk $([[ $profile == c1 ]] && echo 13 || echo 23)
+	need_disk $(case $profile in c1) echo 13 ;; d) echo 20 ;; *) echo 23 ;; esac)
 	apfs_mount $OS_DMG os
 	apfs_mount $SYS_DMG sysos
 	apfs_mount $APP_DMG appos
@@ -162,6 +179,9 @@ if has_step image; then
 	if [[ $profile == c1 ]]; then
 		for e in "${C1_EXCLUDES[@]}"; do excl+=(--exclude "$e"); done
 		sysexcl=(--exclude '*.symbols')      # 1.2 GB of symbol names, never mapped
+	elif [[ $profile == d ]]; then
+		for e in "${D_EXCLUDES[@]}"; do excl+=(--exclude "$e"); done
+		sysexcl=(--exclude '*.symbols')
 	fi
 	copy() {   # copy SRC DST [rsync args]
 		echo "copying $1 -> ${2#"$root"}"
@@ -291,7 +311,10 @@ if has_step tweaks; then
 	# ue0 up as 192.168.7.2/24 (patch 0075). Stage 6: the iOS 16 Bluetooth + Wi-Fi setups too (TWEAKS_ARGS=--no-bt / --no-wifi: without).
 	root_mount
 	# shellcheck disable=SC2086
-	sudo python3 -I "$port/tools/root27/tweaks27.py" --root "$root" --backup "$work/orig-$profile" ${TWEAKS_ARGS:-}
+	# Profile d: btsnoop capture on from the first boot (/var/local/btbridge.snoop) for the LibrePods work.
+	snoop=()
+	[[ $profile == d ]] && snoop=(--snoop)
+	sudo python3 -I "$port/tools/root27/tweaks27.py" --root "$root" --backup "$work/orig-$profile" "${snoop[@]}" ${TWEAKS_ARGS:-}
 	cleanup
 	lap tweaks
 fi
@@ -301,7 +324,8 @@ if has_step finish; then
 	fsck.hfsplus -f -y "$img" | grep -v 'Illegal name' || true
 	fsck.hfsplus -f -n "$img"
 	lap fsck
-	need_disk $(( $(du -BG "$img" | cut -f1 | tr -dc 0-9) * 2 ))
+	# simg-hfs writes one simg about the size of the allocated blocks; img2simg -s needs a second, temporary one.
+	need_disk $(( $(du -BG "$img" | cut -f1 | tr -dc 0-9) * (zero_skip + 1) ))
 	rm -f "${img%.img}.simg" "${img%.img}-at16g.simg"
 	if [[ $zero_skip == 1 ]]; then
 		# Old way: img2simg -s makes every all-zero block DONT_CARE, also zero pages inside files, and fastboot

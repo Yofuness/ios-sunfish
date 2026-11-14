@@ -18,6 +18,26 @@ Bluetooth on 27 pairs (btctl + laptop, A2DP/AVRCP/HFP up, 18:35); next: AirPods 
   qbt_transport.c APSL; dada APSL; AppleKeyStoreState BSD-2-Patent.
 
 ## Log
+### 2026-11-13 19:05 Root profile d (Gate D) built: c1 + asset catalogs, apps, PosterBoard; btsnoop on (not booted)
+- Why (OBS, k317b): SpringBoard aborted on c1 because C1_EXCLUDES had `*.car` (UIKitCore Artwork.bundle/Assets.car,
+  3,427,096 B, missing); launchd also missed /Applications/PosterBoard.app.
+- `tools/mkiosroot27.sh --profile d`: keeps all of /Applications (433 MB) and staged_system_apps (1,148 MB, incl. the
+  poster apps), *.car (1,047 MB), *.loctable (1,872 MB), *.mov, *.metallib, ML models, PreferenceBundles, LinguisticData,
+  PreinstalledAssetsV2, OnBoardingBundles, AppPlaceholders, SFSymbols, CoreEmoji. Leaves out `D_EXCLUDES` (~3.4 GB):
+  /usr/standalone, NanoTimeKit, NanoPreferenceBundles, Health, Assistant, Snippets, ImagingNetworks, 10 private
+  frameworks (NanoUniverse, AvatarKit, SiriSetup, iWorkImport, TextToSpeechMauiSupport, VoiceServices, MediaAnalysis,
+  CVNLP, TextRecognition, CoreHandwriting) and the cache's .symbols (1,196 MB). Source sizes: OS root 13,321 MB +
+  SystemOS 7,161 MB (= full, ~20.5 GB); d content 18 GB used in a 20G volume (2.1 GB free), c1 11 GB.
+- Run (18:43-19:02, 18.5 min): copy 134 s, layout 60 s (59 cryptex files linked, 12 _PanicOnCrash renamed), cache
+  rewrite 96 s (70 files, 33,558,075 edits, same as c1), tree rewrite 616 s (3,381 images of 3,414 paths, 10,746,995
+  edits, 2 refused as on c1: libsystem_platform_debug braaz@0xbeb0, PeerTimeSyncPlugin not in the trust caches;
+  c1 had 2,557 images), tweaks 3 s (ssh + bt incl. btctl + wifi; /var/local/btbridge.snoop created: new tweaks27.py
+  `--snoop`, profile d passes it), fsck 26 s (repaired the root folder count, then clean), simg 175 s.
+- Output (out of git): root27-d.img (20 GiB sparse, 18 GB used), root27-d-at16g.simg 18,934,943,864 B: 2,507 chunks,
+  RAW 18,058 MiB + FILL 353 MiB = 18,411 MiB written; `--verify`: 4,713,172/4,713,172 blocks equal, 0 problems. Ends at
+  userdata 36 GiB (ufsroot1 16 GiB + 20 GiB), inside the ~117.7 GB partition. c1 files kept; host 54 GB free after.
+- Not yet written or booted. Write: `fastboot -S 256M flash userdata ../restore/root27/root27-d-at16g.simg` (replaces
+  c1 on ufsroot1; back up /var/local first, user OK per CLAUDE.md destructive rule).
 ### 2026-11-13 18:55 Gate D plan (Fable; research/notes/gate-d-plan-2026-11-13.md)
 - OBS: SpringBoard's 8/8 crashes (pc 0x23dc231fc) abort with "The UIKit artwork manager should never be nil ...
   UIKit_Artwork.bundle inside UIKitCore.framework is missing": the C1 profile excludes *.car (mkiosroot27.sh:79).

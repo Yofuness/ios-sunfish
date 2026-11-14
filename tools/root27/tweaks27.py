@@ -4,7 +4,7 @@ tools/sunfish-install-btbridge.sh), applied offline to the loop-mounted root ima
 "tweaks", docs/root27.md).
 
   sudo python3 -I tools/root27/tweaks27.py --root MNT [--bin DIR] [--keys DIR] [--btfw DIR] [--backup DIR]
-                                           [--wififw DIR] [--no-ssh] [--no-bt] [--no-wifi] [--remove]
+                                           [--wififw DIR] [--no-ssh] [--no-bt] [--no-wifi] [--snoop] [--remove]
 
 Installs into the image:
 - /var/local/bin/{dropbearmulti,dash,toybox} from work/userland-linux/out (tools/build-userland-linux.sh; plain
@@ -22,7 +22,9 @@ Bluetooth (--bt part, default on; --no-bt leaves it out):
   scan, pair, connect without Settings; Foundation + MobileBluetooth by dlopen, signed with phone/tools/btctl-ents.plist)
   and the WCN3990 firmware
   crbtfw21.tlv + crnv21.bin into /var/local/fw/bt (--btfw: the iOS 16 /var backup or ../restore/fw/vendor/bt; Qualcomm
-  firmware, image only, never git). No /var/local/btbridge.snoop: btsnoop capture stays off (touch it to turn it on).
+  firmware, image only, never git). No /var/local/btbridge.snoop: btsnoop capture stays off (touch it to turn it on);
+  --snoop creates the flag (empty, 0644): btbridge then writes /var/local/bt/btsnoop-*.log from the first boot
+  (mkiosroot27.sh profile d sets it; rm the flag on the phone to stop).
 - launchd.plist as on iOS 16: com.apple.BlueTool ProgramArguments [/usr/sbin/BlueTool, -R] -> [bluetool-stub]
   (MachService com.apple.BlueTool kept); com.apple.bluetoothd env BT_HCI_TRANSPORT=H4BC:POSIX:com.apple.uart.bluetooth,
   115200 + BT_BAUDRATE=115200 (bluetoothd 27 reads both, research/notes/donor-census-2026-11-13.md s4); job
@@ -205,7 +207,7 @@ def install_ssh(root, bindir, keydir):
 
 
 
-def install_bt(root, bindir, fwdir):
+def install_bt(root, bindir, fwdir, snoop):
     data = {}
     for name in BT_BINS:
         f = os.path.join(bindir, name)
@@ -226,8 +228,12 @@ def install_bt(root, bindir, fwdir):
         put(root, '/private/var/local/bin/' + name, b, 0o755)
     for name, b in fw.items():
         put(root, '/private/var/local/fw/bt/' + name, b, 0o644)
+    if snoop:	# btbridge.c SNOOP_FLAG: capture on from the first boot
+        put(root, '/private/var/local/btbridge.snoop', b'', 0o644)
+    elif os.path.lexists(p(root, '/private/var/local/btbridge.snoop')):
+        os.unlink(p(root, '/private/var/local/btbridge.snoop'))
     print(f'/var/local/bin: {" ".join(BT_BINS)}; /var/local/fw/bt: ' +
-          ', '.join(f'{n} {len(b)} B' for n, b in fw.items()) + f' (from {fwdir}); btsnoop off')
+          ', '.join(f'{n} {len(b)} B' for n, b in fw.items()) + f' (from {fwdir}); btsnoop {"on" if snoop else "off"}')
 
 
 def install_wifi(root, bindir, fwdir):
@@ -274,7 +280,8 @@ def remove_wifi(root):
 
 
 def remove_bt(root):
-    for f in ['/private/var/local/bin/' + n for n in BT_BINS] + ['/private/var/local/fw/bt/' + n for n in BT_FW]:
+    for f in ['/private/var/local/bin/' + n for n in BT_BINS] + ['/private/var/local/fw/bt/' + n for n in BT_FW] + \
+            ['/private/var/local/btbridge.snoop']:
         if os.path.lexists(p(root, f)):
             os.unlink(p(root, f))
     for d in ['/private/var/local/fw/bt', '/private/var/local/fw']:
@@ -293,6 +300,7 @@ def main():
     ap.add_argument('--no-ssh', action='store_true', help='leave the SSH part alone')
     ap.add_argument('--no-bt', action='store_true', help='leave the Bluetooth part alone')
     ap.add_argument('--no-wifi', action='store_true', help='leave the Wi-Fi (wland) part alone')
+    ap.add_argument('--snoop', action='store_true', help='create /var/local/btbridge.snoop (btsnoop capture on)')
     ap.add_argument('--remove', action='store_true', help='take the jobs and files out again')
     a = ap.parse_args()
     root = a.root
@@ -320,7 +328,7 @@ def main():
 
     if bt:
         fwdir = a.btfw or next((d for d in BT_FW_DIRS if os.path.isfile(os.path.join(d, BT_FW[0]))), BT_FW_DIRS[0])
-        install_bt(root, a.bin, fwdir)
+        install_bt(root, a.bin, fwdir, a.snoop)
     if wifi:
         install_wifi(root, a.bin, a.wififw)
     if ssh:

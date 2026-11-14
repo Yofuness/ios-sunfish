@@ -14,6 +14,7 @@ git (Apple's files). Nothing here touches the phone.
 ## Build
 ```sh
 tools/mkiosroot27.sh --profile c1          # first-launchd root, 13G image (~11 GB content)
+tools/mkiosroot27.sh --profile d           # Gate D (SpringBoard) root, 20G image (~17.5 GB content), btsnoop on
 tools/mkiosroot27.sh                       # full root, 28G image
 tools/mkiosroot27.sh --profile c1 --steps rewrite,tweaks,finish    # redo one part
 ```
@@ -29,6 +30,14 @@ Steps (log in `../restore/root27/build-PROFILE.log`):
    (owner 272 + .migrated), plain-plist system keybag, launchd.plist `_PanicOnCrash` renamed (`--keep-panic-on-crash` off).
    The c1 profile leaves out /Applications, staged_system_apps, firmware, watch/health/Siri assets, 16 big resource
    frameworks and *.loctable/*.car/*.mov/*.weights/*.hwx/*.metallib (list `C1_EXCLUDES`), plus the cache's .symbols.
+   SpringBoard cannot run on c1: UIKitCore aborts without `UIKitCore.framework/Artwork.bundle/Assets.car` ("The UIKit
+   artwork manager should never be nil", k317b) and launchd misses /Applications/PosterBoard.app. The **d profile**
+   (Gate D) keeps all of that: every app (/Applications incl. PosterBoard, staged_system_apps incl. the poster apps),
+   all asset catalogs, localizations, movies, metallibs, ML models, PreferenceBundles, posters and wallpapers. It
+   leaves out only `D_EXCLUDES` (~3.4 GB that SpringBoard/backboardd/PosterBoard do not reach): /usr/standalone,
+   NanoTimeKit, NanoPreferenceBundles, Health, Assistant, Snippets, ImagingNetworks and 10 private frameworks
+   (NanoUniverse, AvatarKit, SiriSetup, iWorkImport, TextToSpeechMauiSupport, VoiceServices, MediaAnalysis, CVNLP,
+   TextRecognition, CoreHandwriting), plus the cache's .symbols. Its tweaks step adds `--snoop` (btsnoop on, below).
 3. **rewrite** (in the mounted image, as root):
    - dyld cache: zeta `rewrite-zeta-dyld-cache.py` with the proof (lowered PAC words, CodeDirectories re-hashed,
      corecrypto `__fips_hmacs` refilled), staged outside the image, then written into the existing files
@@ -58,7 +67,9 @@ Steps (log in `../restore/root27/build-PROFILE.log`):
    (MachService com.apple.BlueTool kept), com.apple.bluetoothd env `BT_HCI_TRANSPORT=H4BC:POSIX:com.apple.uart.bluetooth,115200`
    + `BT_BAUDRATE=115200` (24B156's bluetoothd reads both, donor census s4), new job `org.iosonpixel.btbridge` (RunAtLoad,
    root). `--remove` puts the 24B156 BlueTool arguments back and drops the two env keys. btsnoop stays off (no
-   /var/local/btbridge.snoop; touch it on the phone to capture into /var/local/bt). On the phone: `/var/local/btbridge.off`
+   /var/local/btbridge.snoop; touch it on the phone to capture into /var/local/bt) except with `--snoop`, which creates
+   the flag (profile d passes it: capture from the first boot; `rm /var/local/btbridge.snoop` on the phone stops it).
+   btctl (Bluetooth CLI) goes to /var/local/bin with btbridge. On the phone: `/var/local/btbridge.off`
    stops btbridge. Needs the kernel's /dev/btbridge + kctl com.apple.uart.bluetooth (xnu 0226 port, boot-arg btbridge=1,
    in the 1244 defaults) and /dev/pmem (default on). Logs: /var/local/btbridge.log, /private/var/tmp/bluetool-stub.log.
    **Wi-Fi part** (default on; `--no-wifi` leaves it out; btbridge waits up to 60 s for wland's "modem ready" in
@@ -86,4 +97,6 @@ from root27-c1.img in 2314 of 13312 MiB, all at pages that are zero in the image
 dyld cache (`.25.dylddata` page 0) and a `__TPRO_CONST` word. Only blocks the HFS bitmap marks free may be DONT_CARE (HFS
 never reads them); simg-hfs.py does that. The c1 image: 11,146 MiB written (10,909 RAW + 237 FILL), 2,166 MiB free skipped.
 Back up /var/local first.
+Profile d (2026-11-13): `fastboot -S 256M flash userdata ../restore/root27/root27-d-at16g.simg` (20 GiB volume, 18,411 MiB
+written, ends at userdata byte 36 GiB of ~117.7 GB).
 Boot with kernel302+ and `rd=ufsroot1` (1290); iOS 16 then needs `sweetnofstab=1`. See the pipeline note, section 5.
